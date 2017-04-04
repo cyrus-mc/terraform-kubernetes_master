@@ -2,7 +2,7 @@ variable "vpc_id" {
   description = "ID of the VPC where the K8s cluster will be deployed"
 }
 
-variable "aws_region" {
+variable "region" {
   description = "AWS region where the K8s cluster will be deployed"
 }
 
@@ -45,4 +45,12 @@ variable "pod_network" {
 
 variable "service_ip_range" {
   description = "Service IP network"
+}
+
+variable "iam_instance_profile" {
+  description = "The IAM role to attach to K8s nodes"
+}
+
+variable "key_pair" {
+  description = "SSH key-pair to attach to K8s nodes"
 }

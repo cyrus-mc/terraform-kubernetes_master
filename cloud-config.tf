@@ -16,7 +16,7 @@ data "template_file" "cloud-config" {
 
     K8S-VERSION      = "v1.5.4_coreos.0"
 
-    AWS_REGION       = "${var.aws_region}"
+    AWS_REGION       = "${var.region}"
 
     /* Point at the etcd ELB */
     ETCD_ELB         = "etcd.${var.name}.${var.internal-tld}"

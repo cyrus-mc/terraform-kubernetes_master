@@ -37,9 +37,9 @@ resource "aws_instance" "master" {
   private_ip = "${element(null_resource.etcd_instance_ip.*.triggers.private_ip, count.index)}"
 
   /* define build details (user_data, key, instance profile) */
-  key_name             = "matthew.ceroni"
+  key_name             = "${var.key_pair}"
   user_data            = "${element(data.template_file.cloud-config.*.rendered, count.index)}"
-  iam_instance_profile = "${aws_iam_instance_profile.kubernetes.id}"
+  iam_instance_profile = "${var.iam_instance_profile}"
 
   tags {
     builtWith         = "terraform"
@@ -65,7 +65,7 @@ resource "null_resource" "generate-certs" {
 
   /* use awscli (must be installed on users system) */
   provisioner "local-exec" {
-    command = "aws lambda invoke --invocation-type RequestResponse --function-name k8s-cluster-certs --region ${var.aws_region} --payload '{\"cluster-name\": \"${var.name}\", \"internal-tld\": \"${var.internal-tld}\", \"region\": \"${var.aws_region}\"}' lambda.out"
+    command = "aws lambda invoke --invocation-type RequestResponse --function-name k8s-cluster-certs --region ${var.region} --payload '{\"cluster-name\": \"${var.name}\", \"internal-tld\": \"${var.internal-tld}\", \"region\": \"${var.region}\"}' lambda.out"
   }
 
   /*
