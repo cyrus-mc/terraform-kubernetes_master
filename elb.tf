@@ -40,8 +40,8 @@ resource "aws_elb" "api-internal" {
 
   tags {
     builtWith         = "terraform"
-    Name              = "k8s-apiserver"
     KubernetesCluster = "${var.name}"
+    Name              = "k8s-apiserver"
   }
 }
 
@@ -87,7 +87,7 @@ resource "aws_elb" "etcd-internal" {
   
   tags {
     builtWith         = "terraform"
-    Name              = "k8s-etcd"
     KubernetesCluster = "${var.name}"
+    Name              = "k8s-etcd"
   }
 }
