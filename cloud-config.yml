@@ -44,7 +44,7 @@ coreos:
             After=flanneld.service
 
             [Service]
-            EnvironmenetFile=/etc/kubernetes/cni/docker_opts_cni.env
+            EnvironmentFile=/etc/kubernetes/cni/docker_opts_cni.env
     - name: k8s-get-certificates.service
       command: start
       content: |
