@@ -41,6 +41,15 @@ resource "aws_instance" "master" {
   user_data            = "${element(data.template_file.cloud-config.*.rendered, count.index)}"
   iam_instance_profile = "${var.iam_instance_profile}"
 
+  /* add additional volume (/var/lib/docker) */
+  ebs_block_device {
+    device_name = "/dev/xvdb"
+    volume_size = "100"
+    volume_type = "gp2"
+  }
+
+
+
   tags {
     builtWith         = "terraform"
     KubernetesCluster = "${var.name}"
