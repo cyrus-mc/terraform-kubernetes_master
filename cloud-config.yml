@@ -44,31 +44,18 @@ coreos:
         What=/dev/xvdb
         Where=/var/lib/docker
         Type=ext4
-    - name: flanneld.service
+    - name: bootstrap-ansible.service
       command: start
-      drop-ins:
-        - name: 40-ExecStartPre-symlink.conf
-          content: |
-            [Service]
-            ExecStartPre=/usr/bin/ln -sf /etc/flannel/options.env /run/flannel/options.env
-        - name: 50-network-config.conf
-          content: |
-            [Service]
-            ExecStartPre=-/usr/bin/etcdctl mk /coreos.com/network/config \
-              '{ "Network": "${POD_NETWORK}", "Backend": { "Type": "vxlan" } }'
-            Restart=always
-            RestartSec=10
-    - name: docker.service
-      command: start
-      drop-ins:
-        - name: 40-flannel.conf
-          content: |
-            [Unit]
-            Requires=flanneld.service
-            After=flanneld.service
-
-            [Service]
-            EnvironmentFile=/etc/kubernetes/cni/docker_opts_cni.env
+      content: |
+        [Unit]
+        After=network-online.target
+        Description=Bootstrap Ansible
+        Requires=network-online.target
+        [Service]
+        ExecStart=/home/core/bootstrap-ansible.sh
+        RemainAfterExit=yes
+        Type=oneshot
+        User=core
     - name: k8s-get-certificates.service
       command: start
       content: |
@@ -83,42 +70,20 @@ coreos:
         ExecStart=/root/get-certificates.sh
         RemainAfterExit=yes
         Type=oneshot
-    - name: kubelet.service
-      command: start
-      content: |
-        [Unit]
-        ConditionFileIsExecutable=/usr/lib/coreos/kubelet-wrapper
-
-        [Service]
-        Environment=KUBELET_IMAGE_TAG=${K8S-VERSION}
-        Environment="RKT_RUN_ARGS=--uuid-file-save=/var/run/kubelet-pod.uuid \
-          --volume var-log,kind=host,source=/var/log \
-          --mount volume=var-log,target=/var/log \
-          --volume dns,kind=host,source=/etc/resolv.conf \
-          --mount volume=dns,target=/etc/resolv.conf"
-        ExecStartPre=/usr/bin/mkdir -p /etc/kubernetes/manifests
-        ExecStartPre=/usr/bin/mkdir -p /var/log/containers
-        ExecStartPre=-/usr/bin/rkt rm --uuid-file=/var/run/kubelet-pod.uuid
-        ExecStart=/usr/lib/coreos/kubelet-wrapper \
-          --api-servers=http://127.0.0.1:8080 \
-          --register-schedulable=false \
-          --cni-conf-dir=/etc/kubernetes/cni/net.d \
-          --network-plugin=${NETWORK_PLUGIN} \
-          --container-runtime=docker \
-          --allow-privileged=true \
-          --pod-manifest-path=/etc/kubernetes/manifests \
-          --hostname-override=${ADVERTISE_IP} \
-          --cluster_dns=${DNS_SERVICE_IP} \
-          --cluster_domain=cluster.local \
-          --cloud-provider=aws
-        ExecStop=-/usr/bin/rkt stop --uuid-file=/var/run/kubelet-pod.uuid
-        Restart=always
-        RestartSec=10
-
-        [Install]
-        WantedBy=multi-user.target
-
 write-files:
+  - path: /etc/ansible/facts.d/k8s_facts.fact
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      
+      cat <<EOF
+      {
+        "srv-domain" : "${SRV-DOMAIN}",
+        "cluster-name" : "${CLUSTER_NAME}",
+        "hostname": "${HOSTNAME}",
+        "etcd_elb": "${ETCD_ELB}"
+      }
+      EOF
   - path: /root/get-certificates.sh
     content: |
       #!/bin/bash
@@ -133,186 +98,64 @@ write-files:
       for file in ca.pem apiserver-key.pem apiserver.pem; do
         /usr/bin/curl $(/opt/bin/s3-get-presigned-url ${AWS_REGION} smarsh-k8s-${CLUSTER_NAME} $file) -o /etc/kubernetes/ssl/$file
       done
-  - path: /etc/kubernetes/manifests/kube-apiserver.yaml
+  - path: /home/core/bootstrap-ansible.sh
+    permissions: "0755"
+    owner: "core"
     content: |
-      apiVersion: v1
-      kind: Pod
-      metadata:
-        name: kube-apiserver
-        namespace: kube-system
-      spec:
-        hostNetwork: true
-        containers:
-        - name: kube-apiserver
-          image: quay.io/coreos/hyperkube:${K8S-VERSION}
-          command:
-          - /hyperkube
-          - apiserver
-          - --bind-address=0.0.0.0
-          - --etcd-servers=http://${ETCD_ELB}:2379
-          - --allow-privileged=true
-          - --service-cluster-ip-range=${SERVICE_IP_RANGE}
-          - --secure-port=443
-          - --advertise-address=${ADVERTISE_IP}
-          - --admission-control=NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota
-          - --tls-cert-file=/etc/kubernetes/ssl/apiserver.pem
-          - --tls-private-key-file=/etc/kubernetes/ssl/apiserver-key.pem
-          - --client-ca-file=/etc/kubernetes/ssl/ca.pem
-          - --service-account-key-file=/etc/kubernetes/ssl/apiserver-key.pem
-          - --runtime-config=extensions/v1beta1/networkpolicies=true
-          - --anonymous-auth=false
-          - --cloud-provider=aws
-          livenessProbe:
-            httpGet:
-              host: 127.0.0.1
-              port: 8080
-              path: /healthz
-            initialDelaySeconds: 15
-            timeoutSeconds: 15
-          ports:
-          - containerPort: 443
-            hostPort: 443
-            name: https
-          - containerPort: 8080
-            hostPort: 8080
-            name: local
-          volumeMounts:
-          - mountPath: /etc/kubernetes/ssl
-            name: ssl-certs-kubernetes
-            readOnly: true
-          - mountPath: /etc/ssl/certs
-            name: ssl-certs-host
-            readOnly: true
-        volumes:
-        - hostPath:
-            path: /etc/kubernetes/ssl
-          name: ssl-certs-kubernetes
-        - hostPath:
-            path: /usr/share/ca-certificates
-          name: ssl-certs-host
-  - path: /etc/kubernetes/manifests/kube-proxy.yaml
-    content: |
-      apiVersion: v1
-      kind: Pod
-      metadata:
-        name: kube-proxy
-        namespace: kube-system
-      spec:
-        hostNetwork: true
-        containers:
-        - name: kube-proxy
-          image: quay.io/coreos/hyperkube:${K8S-VERSION}
-          command:
-          - /hyperkube
-          - proxy
-          - --master=http://127.0.0.1:8080
-          securityContext:
-            privileged: true
-          volumeMounts:
-          - mountPath: /etc/ssl/certs
-            name: ssl-certs-host
-            readOnly: true
-        volumes:
-        - hostPath:
-            path: /usr/share/ca-certificates
-          name: ssl-certs-host
-  - path: /etc/kubernetes/manifests/kube-controller-manager.yaml
-    content: |
-      apiVersion: v1
-      kind: Pod
-      metadata:
-        name: kube-controller-manager
-        namespace: kube-system
-      spec:
-        hostNetwork: true
-        containers:
-        - name: kube-controller-manager
-          image: quay.io/coreos/hyperkube:${K8S-VERSION}
-          command:
-          - /hyperkube
-          - controller-manager
-          - --master=http://127.0.0.1:8080
-          - --leader-elect=true
-          - --service-account-private-key-file=/etc/kubernetes/ssl/apiserver-key.pem
-          - --root-ca-file=/etc/kubernetes/ssl/ca.pem
-          - --cloud-provider=aws
-          resources:
-            requests:
-              cpu: 200m
-          livenessProbe:
-            httpGet:
-              host: 127.0.0.1
-              path: /healthz
-              port: 10252
-            initialDelaySeconds: 15
-            timeoutSeconds: 15
-          volumeMounts:
-          - mountPath: /etc/kubernetes/ssl
-            name: ssl-certs-kubernetes
-            readOnly: true
-          - mountPath: /etc/ssl/certs
-            name: ssl-certs-host
-            readOnly: true
-        volumes:
-        - hostPath:
-            path: /etc/kubernetes/ssl
-          name: ssl-certs-kubernetes
-        - hostPath:
-            path: /usr/share/ca-certificates
-          name: ssl-certs-host
-  - path: /etc/kubernetes/manifests/kube-scheduler.yaml
-    content: |
-      apiVersion: v1
-      kind: Pod
-      metadata:
-        name: kube-scheduler
-        namespace: kube-system
-      spec:
-        hostNetwork: true
-        containers:
-        - name: kube-scheduler
-          image: quay.io/coreos/hyperkube:${K8S-VERSION}
-          command:
-          - /hyperkube
-          - scheduler
-          - --master=http://127.0.0.1:8080
-          - --leader-elect=true
-          resources:
-            requests:
-              cpu: 100m
-          livenessProbe:
-            httpGet:
-              host: 127.0.0.1
-              path: /healthz
-              port: 10251
-            initialDelaySeconds: 15
-            timeoutSeconds: 15
-  - path: /etc/flannel/options.env
-    content: |
-      # defaults to the interface for the default route on the machine
-      FLANNELD_IFACE=$private_ipv4
-      FLANNELD_ETCD_ENDPOINTS=http://${ETCD_ELB}:2379
-  - path: /etc/kubernetes/cni/docker_opts_cni.env
-    content: |
-      DOCKER_OPT_BIP=""
-      DOCKER_OPT_IPMASQ=""
-  - path: /etc/kubernetes/cni/net.d/10-flannel.conf
-    content: |
-      {
-        "name": "podnet",
-        "type": "flannel",
-        "delegate": {
-          "isDefaultGateway": true
-        }
-      }
-  - path: /etc/logrotate.d/docker-containers
-    content: |
-      /var/lib/docker/containers/*/*.log {
-        rotate 7
-        daily
-        compress
-        size=1M
-        missingok
-        delaycompress
-        copytruncate
-      }
+      #!/bin/bash
+
+      set -e
+      set -x
+
+      PKG_HOME="/home/core"
+      PYPY_HOME="/home/core/pypy"
+      PYPY_INSTALL="/home/core/.pypy"
+      PYPY_SHA256="73014c3840609a62c0984b9c383652097f0a8c52fb74dd9de70d9df2a9a743ff"
+      PYPY_VERSION="5.3.1"
+      PYPY_FLAVOR="linux_x86_64-portable"
+
+      cd /tmp
+
+      FILENAME="pypy-$PYPY_VERSION-$PYPY_FLAVOR.tar.bz2"
+      curl --retry 5 -L -o "$FILENAME" "https://bitbucket.org/squeaky/portable-pypy/downloads/$FILENAME"
+
+      if [[ -n "$PYPY_SHA256" ]]; then
+        echo "$PYPY_SHA256  $FILENAME" > "$FILENAME.sha256"
+        sha256sum -c "$FILENAME.sha256"
+      fi
+
+      tar -xjf "$FILENAME"
+      rm -f "$FILENAME"
+
+      mkdir -p "$PYPY_INSTALL"
+      rm -rf "$PYPY_INSTALL"
+      mv -n "pypy-$PYPY_VERSION-$PYPY_FLAVOR" "$PYPY_INSTALL"
+
+      # make sure PATH contains the location where pip, wheel and friends are
+      # so that ansible knows where to find them
+      # this is needed since ansible 2.1 changed the way ansible_python_interpreter
+      # is parsed
+      cat <<EOF > "$PYPY_INSTALL/site-packages/sitecustomize.py"
+      import os
+      import sys
+      os.environ["PATH"] += os.pathsep + os.path.sep.join([sys.prefix, "bin"])
+      EOF
+
+      #mkdir -p `dirname "$PYPY_HOME"`
+      rm -rf "$PYPY_HOME"
+
+      "$PYPY_INSTALL/bin/pypy" "$PYPY_INSTALL/bin/virtualenv-pypy" --system-site-packages "$PYPY_HOME"
+
+      mkdir -p "$PKG_HOME/bin"
+
+      ln -sf "$PYPY_HOME/bin/python" "$PKG_HOME/bin/python"
+      ln -sf "$PYPY_HOME/bin/pip" "$PKG_HOME/bin/pip"
+      ln -sf "$PYPY_HOME/bin/wheel" "$PKG_HOME/bin/wheel"
+
+      PYPY_SSL_PATH=`$PYPY_INSTALL/bin/pypy -c 'from __future__ import print_function; import ssl; print(ssl.get_default_verify_paths().openssl_capath)'`
+
+      sudo mkdir -p `dirname $PYPY_SSL_PATH`
+      sudo ln -sf $COREOS_SSL_CERTS $PYPY_SSL_PATH
+
+      # install needed modules
+      $PYPY_HOME/bin/pip install docker-py        
