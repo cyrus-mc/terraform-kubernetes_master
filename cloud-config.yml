@@ -3,16 +3,16 @@
 ---
 coreos:
 
-  etcd2:
-    advertise-client-urls: http://$private_ipv4:2379
-    # debug: true
-    discovery-srv: ${SRV-DOMAIN}
-    initial-advertise-peer-urls: http://$private_ipv4:2380
-    initial-cluster-state: new
-    initial-cluster-token: ${ETCD_TOKEN}
-    listen-client-urls: http://0.0.0.0:2379
-    listen-peer-urls: http://0.0.0.0:2380
-    name: ${HOSTNAME}
+  #  etcd2:
+  #  advertise-client-urls: http://$private_ipv4:2379
+  #  # debug: true
+  #  discovery-srv: ${SRV-DOMAIN}
+  #  initial-advertise-peer-urls: http://$private_ipv4:2380
+  #  initial-cluster-state: new
+  #  initial-cluster-token: ${ETCD_TOKEN}
+  #  listen-client-urls: http://0.0.0.0:2379
+  #  listen-peer-urls: http://0.0.0.0:2380
+  #  name: ${HOSTNAME}
 
   update:
     reboot-strategy: etcd-lock
@@ -78,8 +78,8 @@ write-files:
       
       cat <<EOF
       {
-        "srv-domain" : "${SRV-DOMAIN}",
-        "cluster-name" : "${CLUSTER_NAME}",
+        "srv_domain" : "${SRV-DOMAIN}",
+        "cluster_name" : "${CLUSTER_NAME}",
         "hostname": "${HOSTNAME}",
         "etcd_elb": "${ETCD_ELB}"
       }
@@ -159,3 +159,11 @@ write-files:
 
       # install needed modules
       $PYPY_HOME/bin/pip install docker-py        
+      $PYPY_HOME/bin/pip install boto
+
+      # now phone home to Ansible tower
+      hname=$(hostname -i)
+      curl --insecure -f -H 'Content-Type: application/json' -XPOST \
+        -d '{ "host_config_key": "38cf5a475bf2b8a8bb1c0fd50563741a", "extra_vars": "{\"hostname\": \"'"$hname"'\"}" }' \
+        https://ansible-tower.services.aws:443/api/v1/job_templates/38/callback/
+

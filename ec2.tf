@@ -48,8 +48,6 @@ resource "aws_instance" "master" {
     volume_type = "gp2"
   }
 
-
-
   tags {
     builtWith         = "terraform"
     KubernetesCluster = "${var.name}"
@@ -82,9 +80,13 @@ resource "null_resource" "generate-certs" {
     cluster has been deleted the lambda function won't actually generate new certificates (nor
     would you want it to)
   */
+
+  /*
   triggers {
     master_instance_id = "${join(",", aws_instance.master.*.id)}"
   }
+  */
+
 }
 
 # will need these later
