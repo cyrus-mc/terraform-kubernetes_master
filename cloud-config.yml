@@ -2,24 +2,10 @@
 
 ---
 coreos:
-
-  #  etcd2:
-  #  advertise-client-urls: http://$private_ipv4:2379
-  #  # debug: true
-  #  discovery-srv: ${SRV-DOMAIN}
-  #  initial-advertise-peer-urls: http://$private_ipv4:2380
-  #  initial-cluster-state: new
-  #  initial-cluster-token: ${ETCD_TOKEN}
-  #  listen-client-urls: http://0.0.0.0:2379
-  #  listen-peer-urls: http://0.0.0.0:2380
-  #  name: ${HOSTNAME}
-
   update:
     reboot-strategy: etcd-lock
 
   units:
-    - name: etcd2.service
-      command: start
     - name: format-ephemeral.service
       command: start
       content: |

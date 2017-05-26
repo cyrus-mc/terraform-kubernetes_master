@@ -10,7 +10,7 @@ resource "null_resource" "etcd_instance_ip" {
 
   triggers {
     private_ip = "${cidrhost(element(var.ip_ranges, count.index), "${((1 + count.index) - (count.index %
- "${length(var.ip_ranges)}") + 10)}")}"
+ "${length(var.ip_ranges)}") + 10 + var.cluster)}")}"
   }
 
 }

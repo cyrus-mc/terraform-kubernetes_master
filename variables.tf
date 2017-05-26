@@ -2,6 +2,11 @@ variable "vpc_id" {
   description = "ID of the VPC where the K8s cluster will be deployed"
 }
 
+variable "cluster" {
+  description = "Ordinal value denoting the cluster (to allow for multiples in same subnets"
+  default     = 0
+}
+
 variable "region" {
   description = "AWS region where the K8s cluster will be deployed"
 }
