@@ -44,11 +44,6 @@ variable "ip_ranges" {
   type        = "list"
 }
 
-variable "labels" {
-  description = "Labels to assign node"
-  type        = "map"
-}
-
 variable "pod_network" {
   description = "POD network"
 }

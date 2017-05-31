@@ -7,6 +7,10 @@ data "template_file" "cloud-config" {
   template = "${file("${path.module}/cloud-config.yml")}"
 
   vars {
+
+    /* the number of API servers */
+    API-SERVERS      = "${var.servers}"
+
     HOSTNAME         = "etcd-${count.index + 1}"
 
     /* the SRV domain for etcd bootstrapping */
