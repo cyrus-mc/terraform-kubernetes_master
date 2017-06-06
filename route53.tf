@@ -90,3 +90,8 @@ resource "aws_route53_record" "CNAME-etcd" {
   zone_id = "${aws_route53_zone.internal.zone_id}"
 
 }
+
+# outputs
+output "route53_zone" {
+  value = "${aws_route53_zone.internal.zone_id}"
+}
