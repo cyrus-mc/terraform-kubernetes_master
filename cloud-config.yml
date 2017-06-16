@@ -68,6 +68,7 @@ write-files:
       {
         "api_servers" : "${API-SERVERS}",
         "srv_domain" : "${SRV-DOMAIN}",
+        "etcd_servers" : ${ETCD_SERVERS},
         "cluster_name" : "${CLUSTER_NAME}",
         "hostname": "${HOSTNAME}",
         "etcd_elb": "${ETCD_ELB}"

@@ -29,6 +29,8 @@ data "template_file" "cloud-config" {
 
     ADVERTISE_IP     = "${element(null_resource.etcd_instance_ip.*.triggers.private_ip, count.index)}"
 
+    ETCD_SERVERS     = "${jsonencode(null_resource.etcd_instance_ip.*.triggers.private_ip)}"
+
     NETWORK_PLUGIN   = "cni"
 
     POD_NETWORK      = "${var.pod_network}"
