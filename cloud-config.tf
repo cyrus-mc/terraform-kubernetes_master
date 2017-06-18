@@ -23,7 +23,7 @@ data "template_file" "cloud-config" {
     AWS_REGION       = "${var.region}"
 
     /* Point at the etcd ELB */
-    ETCD_ELB         = "etcd.${var.name}.${var.internal-tld}"
+    /*ETCD_ELB         = "${aws_elb.etcd-internal.dns_name}" */
 
     ETCD_TOKEN       = "etcd-cluster-${var.name}"
 

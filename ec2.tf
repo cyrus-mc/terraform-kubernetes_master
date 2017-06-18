@@ -21,7 +21,6 @@ resource "null_resource" "etcd_instance_ip" {
   This is a one time creation due to fact etcd goes through an initial
   bootstrap
 
-  Dependencies: aws_route53_record.A-etcd, aws_route53_record.SRV-etcd
 */
 resource "aws_instance" "master" {
 
@@ -55,10 +54,6 @@ resource "aws_instance" "master" {
     role              = "etcd,apiserver"
     visibility        = "private"
   }
-
-  /* all DNS entries required for successful etcd bootstrapping */
-  depends_on = [ "aws_route53_record.A-etcd", 
-                 "aws_route53_record.SRV-etcd" ]
 
 }
 

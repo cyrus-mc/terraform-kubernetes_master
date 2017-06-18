@@ -46,7 +46,7 @@ resource "aws_elb" "api-internal" {
 }
 
 /*
-  ELB resource for API service
+  ELB resource for ETCD service
 
   Dependencies: aws_instance.master
 */
