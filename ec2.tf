@@ -34,6 +34,7 @@ resource "aws_instance" "master" {
   /* define network details about the instance (subnet, private IP) */
   subnet_id  = "${element(var.subnets, count.index)}"
   private_ip = "${element(null_resource.etcd_instance_ip.*.triggers.private_ip, count.index)}"
+  vpc_security_group_ids = [ "${aws_security_group.kubernetes-master.id}" ]
 
   /* define build details (user_data, key, instance profile) */
   key_name             = "${var.key_pair}"
