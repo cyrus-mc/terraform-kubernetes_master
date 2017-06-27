@@ -41,10 +41,15 @@ resource "aws_instance" "master" {
   user_data            = "${element(data.template_file.cloud-config.*.rendered, count.index)}"
   iam_instance_profile = "${var.iam_instance_profile}"
 
+  /* increase root device space */
+  root_block_device {
+    volume_size = "100"
+  }
+
   /* add additional volume (/var/lib/docker) */
   ebs_block_device {
     device_name = "/dev/xvdb"
-    volume_size = "100"
+    volume_size = "500"
     volume_type = "gp2"
   }
 
