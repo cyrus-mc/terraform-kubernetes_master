@@ -43,13 +43,13 @@ resource "aws_instance" "master" {
 
   /* increase root device space */
   root_block_device {
-    volume_size = "100"
+    volume_size = "${var.root_volume_size}"
   }
 
   /* add additional volume (/var/lib/docker) */
   ebs_block_device {
     device_name = "/dev/xvdb"
-    volume_size = "500"
+    volume_size = "${var.docker_volume_size}"
     volume_type = "gp2"
   }
 

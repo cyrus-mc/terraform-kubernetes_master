@@ -59,3 +59,18 @@ variable "iam_instance_profile" {
 variable "key_pair" {
   description = "SSH key-pair to attach to K8s nodes"
 }
+
+variable "enable_route53" {
+  description = "Enable route 53 support"
+  default     = false
+}
+
+variable "root_volume_size" {
+  description = "Size of the instance root volume"
+  default     = "8"
+}
+
+variable "docker_volume_size" {
+  description = "Size of the docker volume"
+  default     = "100"
+}
