@@ -61,6 +61,7 @@ resource "aws_instance" "master" {
     visibility        = "private"
   }
 
+  /* all DNS entries required for successful etcd bootstrapping */
   depends_on = [ "aws_route53_record.A-etcd",
                  "aws_route53_record.SRV-etcd" ]
 
