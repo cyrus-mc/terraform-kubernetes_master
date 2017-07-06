@@ -74,3 +74,11 @@ variable "docker_volume_size" {
   description = "Size of the docker volume"
   default     = "100"
 }
+
+variable "ansible_server" {
+  description = "FQDN or IP of the Ansible server"
+}
+
+variable "ansible_callback" {}
+
+variable "ansible_host_key" {}
