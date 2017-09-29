@@ -23,6 +23,7 @@ variable "name" {
 /* variables controlling instance creation (number, AMI, type) */
 variable "servers" {
   description = "Number of instances to create (should be an odd number)"
+  default     = 3
 }
 
 variable "ami" {
@@ -46,10 +47,12 @@ variable "ip_ranges" {
 
 variable "pod_network" {
   description = "POD network"
+  default     = "10.2.0.0/16"
 }
 
 variable "service_ip_range" {
   description = "Service IP network"
+  default     = "10.3.0.0/24"
 }
 
 variable "iam_instance_profile" {
