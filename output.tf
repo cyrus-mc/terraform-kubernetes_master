@@ -13,3 +13,7 @@ output "etcd_elb" {
 output "etcd_elb_cname" {
   value = "${aws_route53_record.CNAME-etcd.fqdn}"
 }
+
+output "etcd_private_ips" {
+  value = [ "${aws_instance.master.*.private_ip}" ]
+}
