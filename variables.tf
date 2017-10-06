@@ -85,3 +85,8 @@ variable "ansible_server" {
 variable "ansible_callback" {}
 
 variable "ansible_host_key" {}
+
+variable "aws_profile" {
+  description = "AWS profile to use for local provisioner"
+  default     = "default"
+}

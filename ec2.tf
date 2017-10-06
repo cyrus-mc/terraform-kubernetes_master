@@ -77,7 +77,7 @@ resource "null_resource" "generate-certs" {
 
   /* use awscli (must be installed on users system) */
   provisioner "local-exec" {
-    command = "aws lambda invoke --invocation-type RequestResponse --function-name k8s-cluster-certs --region ${var.region} --payload '{\"cluster-name\": \"${var.name}\", \"internal-tld\": \"${var.internal-tld}\", \"region\": \"${var.region}\"}' lambda.out"
+    command = "aws lambda invoke --profile ${var.aws_profile} --invocation-type RequestResponse --function-name k8s-cluster-certs --region ${var.region} --payload '{\"cluster-name\": \"${var.name}\", \"internal-tld\": \"${var.internal-tld}\", \"region\": \"${var.region}\"}' lambda.out"
   }
 
   /*
@@ -92,9 +92,4 @@ resource "null_resource" "generate-certs" {
   }
   */
 
-}
-
-# will need these later
-output "etcd_private_ips" {
-  value = [ "${aws_instance.master.*.private_ip}" ]
 }
