@@ -1,3 +1,11 @@
+###################################################
+#          Local Variable Definitions             #
+###################################################
+locals {
+
+  instance_profile = "${var.instance_profile == "" ? aws_iam_instance_profile.kubernetes.id : var.instance_profile}"
+}
+
 /*
   Generate master/etcd instance IP
 
@@ -9,8 +17,8 @@ resource "null_resource" "etcd_instance_ip" {
   count = "${var.servers}"
 
   triggers {
-    private_ip = "${cidrhost(element(var.ip_ranges, count.index), "${((1 + count.index) - (count.index %
- "${length(var.ip_ranges)}") + 10 + var.cluster)}")}"
+    private_ip = "${cidrhost(element(data.aws_subnet.selected.*.cidr_block, count.index), "${((1 + count.index) - (count.index %
+ "${length(data.aws_subnet.selected.*.cidr_block)}") + 10 + var.cluster)}")}"
   }
 
 }
@@ -32,14 +40,14 @@ resource "aws_instance" "master" {
   instance_type = "${var.instance_type}"
 
   /* define network details about the instance (subnet, private IP) */
-  subnet_id  = "${element(var.subnets, count.index)}"
+  subnet_id  = "${element(var.subnet_id, count.index)}"
   private_ip = "${element(null_resource.etcd_instance_ip.*.triggers.private_ip, count.index)}"
   vpc_security_group_ids = [ "${aws_security_group.kubernetes-master.id}" ]
 
   /* define build details (user_data, key, instance profile) */
   key_name             = "${var.key_pair}"
   user_data            = "${element(data.template_file.cloud-config.*.rendered, count.index)}"
-  iam_instance_profile = "${var.iam_instance_profile}"
+  iam_instance_profile = "${var.instance_profile}"
 
   /* increase root device space */
   root_block_device {

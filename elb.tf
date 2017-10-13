@@ -36,7 +36,7 @@ resource "aws_elb" "api-internal" {
   }
 
   /* attach to all subnets an instance can live in */
-  subnets = [ "${var.subnets}" ]
+  subnets = [ "${var.subnet_id}" ]
 
   tags {
     builtWith         = "terraform"
@@ -83,7 +83,7 @@ resource "aws_elb" "etcd-internal" {
   }
 
   /* attach to all subnets an instance can live in */
-  subnets = [ "${var.subnets}" ]
+  subnets = [ "${var.subnet_id}" ]
   
   tags {
     builtWith         = "terraform"

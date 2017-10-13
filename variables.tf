@@ -35,15 +35,15 @@ variable "instance_type" {
   default     = "t2.large"
 }
 
-variable "subnets" {
+variable "subnet_id" {
   description = "List of subnets where instances will be deployed to"
   type        = "list"
 }
 
-variable "ip_ranges" {
-  description = "List of IP ranges for the above subnets"
-  type        = "list"
-}
+#variable "ip_ranges" {
+#  description = "List of IP ranges for the above subnets"
+#  type        = "list"
+#}
 
 variable "pod_network" {
   description = "POD network"
@@ -55,8 +55,9 @@ variable "service_ip_range" {
   default     = "10.3.0.0/24"
 }
 
-variable "iam_instance_profile" {
+variable "instance_profile" {
   description = "The IAM role to attach to K8s nodes"
+  default     = ""
 }
 
 variable "key_pair" {
