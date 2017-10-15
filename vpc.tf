@@ -10,7 +10,7 @@ resource "aws_security_group" "kubernetes-master" {
   description = "Define inbound and outbound traffic for Kubernetes API server nodes"
 
   /* link to the correct VPC */
-  vpc_id = "${var.vpc_id}"
+  vpc_id = "${element(data.aws_subnet.selected.*.vpc_id, 0)}"
 
   /*
     Define ingress rules

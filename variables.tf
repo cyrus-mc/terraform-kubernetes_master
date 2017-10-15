@@ -1,7 +1,3 @@
-variable "vpc_id" {
-  description = "ID of the VPC where the K8s cluster will be deployed"
-}
-
 variable "region" {
   description = "AWS region where the K8s cluster will be deployed"
 }
