@@ -2,11 +2,6 @@ variable "vpc_id" {
   description = "ID of the VPC where the K8s cluster will be deployed"
 }
 
-variable "cluster" {
-  description = "Ordinal value denoting the cluster (to allow for multiples in same subnets"
-  default     = 0
-}
-
 variable "region" {
   description = "AWS region where the K8s cluster will be deployed"
 }
@@ -39,11 +34,6 @@ variable "subnet_id" {
   description = "List of subnets where instances will be deployed to"
   type        = "list"
 }
-
-#variable "ip_ranges" {
-#  description = "List of IP ranges for the above subnets"
-#  type        = "list"
-#}
 
 variable "pod_network" {
   description = "POD network"

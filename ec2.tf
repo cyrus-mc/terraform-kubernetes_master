@@ -18,7 +18,7 @@ resource "null_resource" "etcd_instance_ip" {
 
   triggers {
     private_ip = "${cidrhost(element(data.aws_subnet.selected.*.cidr_block, count.index), "${((1 + count.index) - (count.index %
- "${length(data.aws_subnet.selected.*.cidr_block)}") + 10 + var.cluster)}")}"
+ "${length(data.aws_subnet.selected.*.cidr_block)}") + 10)}")}"
   }
 
 }
