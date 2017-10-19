@@ -136,3 +136,21 @@ resource "aws_iam_instance_profile" "kubernetes" {
   role = "${aws_iam_role.kubernetes.name}"
 
 }
+
+/*
+  Attach policies to above role
+*/
+resource "aws_iam_role_policy_attachment" "kubernetes-ec2" {
+  role       = "${aws_iam_role.kubernetes.name}"
+  policy_arn = "${aws_iam_policy.kubernetes-ec2.arn}"
+}
+
+resource "aws_iam_role_policy_attachment" "kubernetes-elb" {
+  role       = "${aws_iam_role.kubernetes.name}"
+  policy_arn = "${aws_iam_policy.kubernetes-elb.arn}"
+}
+
+resource "aws_iam_role_policy_attachment" "kubernetes-s3" {
+  role       = "${aws_iam_role.kubernetes.name}"
+  policy_arn = "${aws_iam_policy.kubernetes-s3.arn}"
+}
