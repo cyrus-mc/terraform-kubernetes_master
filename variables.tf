@@ -1,3 +1,21 @@
+###############################################
+#         Local Variable definitions          #
+###############################################
+locals {
+  tags = [
+    {
+      key                 = "builtWith"
+      value               = "terraform"
+      propagate_at_launch = true
+    },
+    {
+      key                 = "Name"
+      value               = "${var.name}"
+      propagate_at_launch = true
+    }
+  ]
+}
+
 variable "region" {
   description = "AWS region where the K8s cluster will be deployed"
 }
@@ -50,6 +68,11 @@ variable "key_pair" {
   description = "SSH key-pair to attach to K8s nodes"
 }
 
+variable "tags" {
+  description = "A map of tags to add to all resources"
+  default     = {}
+}
+
 variable "enable_route53" {
   description = "Enable route 53 support"
   default     = false
@@ -76,4 +99,24 @@ variable "ansible_host_key" {}
 variable "aws_profile" {
   description = "AWS profile to use for local provisioner"
   default     = "default"
+}
+
+variable "workers" {
+  default = []
+#  [
+#    {
+#      labels.namespace     = "default"
+#      labels.role          = "jnlp"
+#      auto_scaling.min     = "1"
+#      auto_scaling.max     = "6"
+#      auto_scaling.desired = "2"
+#    },
+#    {
+#      labels.namespace     = "default"
+#      labels.role          = "slave"
+#      auto_scaling.min     = "1"
+#      auto_scaling.max     = "6"
+#      auto_scaling.desired = "2"
+#   }
+# ]
 }

@@ -44,26 +44,25 @@ coreos:
         RemainAfterExit=yes
         Type=oneshot
         User=core
-    - name: k8s-get-certificates.service
-      command: start
-      content: |
-        [Unit]
-        After=network-online.target
-        Description=Retrieve certificates from S3 used by Kubernetes cluster
-        Requires=network-online.target
-        [Service]
-        ExecStartPre=-/usr/bin/mkdir -p /opt/bin
-        ExecStartPre=-/usr/bin/mkdir -p /etc/kubernetes/ssl
-        ExecStartPre=-/usr/bin/chmod +x /root/get-certificates.sh
-        ExecStart=/root/get-certificates.sh
-        RemainAfterExit=yes
-        Type=oneshot
+
 write-files:
+  - path: /etc/kubernetes/ssl/ca.pem
+    permissions: "0644"
+    content: |
+      ${CA}
+  - path: /etc/kubernetes/ssl/apiserver-key.pem
+    permissions: "0600"
+    content: |
+      ${CERTIFICATE_KEY}
+  - path: /etc/kubernetes/ssl/apiserver.pem
+    permissions: "0644"
+    content: |
+      ${CERTIFICATE}
   - path: /etc/ansible/facts.d/k8s_facts.fact
     permissions: "0755"
     content: |
       #!/bin/bash
-      
+
       cat <<EOF
       {
         "api_servers" : "${API-SERVERS}",
@@ -73,20 +72,6 @@ write-files:
         "hostname": "${HOSTNAME}"
       }
       EOF
-  - path: /root/get-certificates.sh
-    content: |
-      #!/bin/bash
-      
-      # retrieve S3 utility
-      /usr/bin/curl -L -o /opt/bin/s3-get-presigned-url https://github.com/kz8s/s3-get-presigned-url/releases/download/v0.1/s3-get-presigned-url_linux_amd64
-
-      # make executable
-      chmod +x /opt/bin/s3-get-presigned-url
-
-      # get API key and certificate as well as the CA certificate
-      for file in ca.pem apiserver-key.pem apiserver.pem; do
-        /usr/bin/curl $(/opt/bin/s3-get-presigned-url ${AWS_REGION} smarsh-k8s-${CLUSTER_NAME} $file) -o /etc/kubernetes/ssl/$file
-      done
   - path: /home/core/bootstrap-ansible.sh
     permissions: "0755"
     owner: "core"
@@ -147,7 +132,7 @@ write-files:
       sudo ln -sf $COREOS_SSL_CERTS $PYPY_SSL_PATH
 
       # install needed modules
-      $PYPY_HOME/bin/pip install docker-py        
+      $PYPY_HOME/bin/pip install docker-py
       $PYPY_HOME/bin/pip install boto
 
       # now phone home to Ansible tower

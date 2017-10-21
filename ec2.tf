@@ -47,7 +47,7 @@ resource "aws_instance" "master" {
   /* define build details (user_data, key, instance profile) */
   key_name             = "${var.key_pair}"
   user_data            = "${element(data.template_file.cloud-config.*.rendered, count.index)}"
-  iam_instance_profile = "${var.instance_profile}"
+  iam_instance_profile = "${local.instance_profile}"
 
   /* increase root device space */
   root_block_device {
@@ -75,29 +75,59 @@ resource "aws_instance" "master" {
 
 }
 
-/*
-  Use local provisioner to fire off Lambda function which generates Cluster certificates.
+resource "aws_launch_configuration" "workers" {
 
-  This should only ever run once. If you ever need to regenerate certificates you are most likely
-  looking at a complete teardown and rebuild of the cluster.
-*/
-resource "null_resource" "generate-certs" {
+  count = "${length(var.workers)}"
 
-  /* use awscli (must be installed on users system) */
-  provisioner "local-exec" {
-    command = "aws lambda invoke --profile ${var.aws_profile} --invocation-type RequestResponse --function-name k8s-cluster-certs --region ${var.region} --payload '{\"cluster-name\": \"${var.name}\", \"internal-tld\": \"${var.internal-tld}\", \"region\": \"${var.region}\"}' lambda.out"
+  root_block_device {
+    volume_size = "100"
   }
 
-  /*
-    Again, this should never really happen. And even if it does, unless the bucket for this
-    cluster has been deleted the lambda function won't actually generate new certificates (nor
-    would you want it to)
-  */
-
-  /*
-  triggers {
-    master_instance_id = "${join(",", aws_instance.master.*.id)}"
+  ebs_block_device {
+    device_name = "/dev/xvdb"
+    volume_size = "500"
+    volume_type = "gp2"
   }
-  */
+
+  image_id = "${var.ami}"
+
+  iam_instance_profile = "${local.instance_profile}"
+  instance_type        = "${lookup(var.workers[count.index], "instance_type", var.instance_type)}"
+
+  key_name             = "${var.key_pair}"
+
+  security_groups = [ "${aws_security_group.kubernetes-master.id}" ]
+  /* user data supplied to provision each instance */
+  user_data = "${element(data.template_file.worker-config.*.rendered, count.index)}"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+}
+
+resource "aws_autoscaling_group" "workers" {
+
+  /* create as many auto-scaling groups as required */
+  count                = "${length(var.workers)}"
+
+  /* tie this ASG to the corresponding launch configuration created above */
+  launch_configuration = "${element(aws_launch_configuration.workers.*.name, count.index)}"
+
+  health_check_grace_period = 60
+  health_check_type         = "EC2"
+
+  force_delete     = true
+
+  min_size         = "${lookup(var.workers[count.index], "auto_scaling.min")}"
+  max_size         = "${lookup(var.workers[count.index], "auto_scaling.max")}"
+  desired_capacity = "${lookup(var.workers[count.index], "auto_scaling.desired")}"
+
+  /* subnet(s) to launch instances in */
+  vpc_zone_identifier = [ "${var.subnet_id}" ]
+
+  lifecycle {
+    create_before_destroy = true
+  }
 
 }
