@@ -1,13 +1,13 @@
 /*
   Define security group controlling inbound and oubound access to
-  Kubernetes API servers (masters)
+  Kubernetes servers (masters and workers)
 
 */
 resource "aws_security_group" "kubernetes-master" {
 
-  name = "kubernetes-master-${var.name}"
+  name = "kubernetes.${var.name}"
 
-  description = "Define inbound and outbound traffic for Kubernetes API server nodes"
+  description = "Definition of inbound and outbounc traffic for Kubernetes servers"
 
   /* link to the correct VPC */
   vpc_id = "${element(data.aws_subnet.selected.*.vpc_id, 0)}"
@@ -23,7 +23,7 @@ resource "aws_security_group" "kubernetes-master" {
     cidr_blocks = [ "0.0.0.0/0" ]
   }
 
-  /* 
+  /*
     Define egress rules
   */
   egress {
@@ -33,10 +33,9 @@ resource "aws_security_group" "kubernetes-master" {
     cidr_blocks = [ "0.0.0.0/0" ]
   }
 
-  tags {
-    builtWidth        = "terraform"
-    KubernetesCluster = "${var.name}"
-    Name              = "kubernetes-master-${var.name}"
-  }
+  /* tag the resource */
+  tags = "${merge(local.tags,
+                  map("Name", format("kubernetes.%s", var.name)),
+                  var.tags)}"
 
 }
