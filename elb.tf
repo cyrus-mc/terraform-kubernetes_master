@@ -39,11 +39,10 @@ resource "aws_elb" "api-internal" {
   subnets         = [ "${var.subnet_id}" ]
   security_groups = [ "${aws_security_group.kubernetes-master.id}" ]
 
-  tags {
-    builtWith         = "terraform"
-    KubernetesCluster = "${var.name}"
-    Name              = "k8s-apiserver"
-  }
+  tags = "${merge(local.tags,
+                   map("Name", format("apiserver.%s", var.name)),
+                   map("visibility", "private"),
+                   var.tags)}"
 }
 
 /*
@@ -87,9 +86,8 @@ resource "aws_elb" "etcd-internal" {
   subnets         = [ "${var.subnet_id}" ]
   security_groups = [ "${aws_security_group.kubernetes-master.id}" ]
 
-  tags {
-    builtWith         = "terraform"
-    KubernetesCluster = "${var.name}"
-    Name              = "k8s-etcd"
-  }
+  tags = "${merge(local.tags,
+                   map("Name", format("etcd.%s", var.name)),
+                   map("visibility", "private"),
+                   var.tags)}"
 }
