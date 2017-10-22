@@ -2,18 +2,23 @@
 #         Local Variable definitions          #
 ###############################################
 locals {
-  tags = [
-    {
-      key                 = "builtWith"
-      value               = "terraform"
-      propagate_at_launch = true
-    },
-    {
-      key                 = "Name"
-      value               = "${var.name}"
-      propagate_at_launch = true
-    }
-  ]
+
+  /* lookup the AMI based on region */
+  region_ami = "${lookup(var.coreos_ami, var.region)}"
+
+  /*
+    Either use supplied AMI or lookup based on region
+  */
+  ami = "${var.ami == "" ? local.region_ami : var.ami}"
+
+  /*
+    Default tags (loacl so you can't over-ride)
+  */
+  tags = {
+    builtWith         = "terraform"
+    KubernetesCluster = "${var.name}"
+  }
+
 }
 
 variable "region" {
@@ -37,6 +42,15 @@ variable "servers" {
 
 variable "ami" {
   description = "The Amazon Machine Image (AMI)"
+  default     = ""
+}
+
+variable "coreos_ami" {
+  description = "Current list of CoreOS AMI based on region"
+  type        = "map"
+  default {
+    "us-west-2" = "ami-4e804136"
+  }
 }
 
 variable "instance_type" {
@@ -47,16 +61,6 @@ variable "instance_type" {
 variable "subnet_id" {
   description = "List of subnets where instances will be deployed to"
   type        = "list"
-}
-
-variable "pod_network" {
-  description = "POD network"
-  default     = "10.2.0.0/16"
-}
-
-variable "service_ip_range" {
-  description = "Service IP network"
-  default     = "10.3.0.0/24"
 }
 
 variable "instance_profile" {
@@ -80,12 +84,12 @@ variable "enable_route53" {
 
 variable "root_volume_size" {
   description = "Size of the instance root volume"
-  default     = "8"
+  default     = "100"
 }
 
 variable "docker_volume_size" {
   description = "Size of the docker volume"
-  default     = "100"
+  default     = "500"
 }
 
 variable "ansible_server" {
@@ -96,27 +100,19 @@ variable "ansible_callback" {}
 
 variable "ansible_host_key" {}
 
-variable "aws_profile" {
-  description = "AWS profile to use for local provisioner"
-  default     = "default"
-}
+/*
+  List of maps that defines worker instance groups to deploy
 
+  ex:
+  [
+    {
+      auto_scaling.min     = "1"
+      auto_scaling.max     = "6"
+      auto_scaling.desired = "2"
+      labels               = "namespace,role,default.testing"
+    }
+  ]
+*/
 variable "workers" {
   default = []
-#  [
-#    {
-#      labels.namespace     = "default"
-#      labels.role          = "jnlp"
-#      auto_scaling.min     = "1"
-#      auto_scaling.max     = "6"
-#      auto_scaling.desired = "2"
-#    },
-#    {
-#      labels.namespace     = "default"
-#      labels.role          = "slave"
-#      auto_scaling.min     = "1"
-#      auto_scaling.max     = "6"
-#      auto_scaling.desired = "2"
-#   }
-# ]
 }
