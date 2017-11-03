@@ -1,10 +1,24 @@
-variable "vpc_id" {
-  description = "ID of the VPC where the K8s cluster will be deployed"
-}
+###############################################
+#         Local Variable definitions          #
+###############################################
+locals {
 
-variable "cluster" {
-  description = "Ordinal value denoting the cluster (to allow for multiples in same subnets"
-  default     = 0
+  /* lookup the AMI based on region */
+  region_ami = "${lookup(var.coreos_ami, var.region)}"
+
+  /*
+    Either use supplied AMI or lookup based on region
+  */
+  ami = "${var.ami == "" ? local.region_ami : var.ami}"
+
+  /*
+    Default tags (loacl so you can't over-ride)
+  */
+  tags = {
+    builtWith         = "terraform"
+    KubernetesCluster = "${var.name}"
+  }
+
 }
 
 variable "region" {
@@ -28,6 +42,15 @@ variable "servers" {
 
 variable "ami" {
   description = "The Amazon Machine Image (AMI)"
+  default     = ""
+}
+
+variable "coreos_ami" {
+  description = "Current list of CoreOS AMI based on region"
+  type        = "map"
+  default {
+    "us-west-2" = "ami-4e804136"
+  }
 }
 
 variable "instance_type" {
@@ -35,32 +58,23 @@ variable "instance_type" {
   default     = "t2.large"
 }
 
-variable "subnets" {
+variable "subnet_id" {
   description = "List of subnets where instances will be deployed to"
   type        = "list"
 }
 
-variable "ip_ranges" {
-  description = "List of IP ranges for the above subnets"
-  type        = "list"
-}
-
-variable "pod_network" {
-  description = "POD network"
-  default     = "10.2.0.0/16"
-}
-
-variable "service_ip_range" {
-  description = "Service IP network"
-  default     = "10.3.0.0/24"
-}
-
-variable "iam_instance_profile" {
+variable "instance_profile" {
   description = "The IAM role to attach to K8s nodes"
+  default     = ""
 }
 
 variable "key_pair" {
   description = "SSH key-pair to attach to K8s nodes"
+}
+
+variable "tags" {
+  description = "A map of tags to add to all resources"
+  default     = {}
 }
 
 variable "enable_route53" {
@@ -70,12 +84,12 @@ variable "enable_route53" {
 
 variable "root_volume_size" {
   description = "Size of the instance root volume"
-  default     = "8"
+  default     = "100"
 }
 
 variable "docker_volume_size" {
   description = "Size of the docker volume"
-  default     = "100"
+  default     = "500"
 }
 
 variable "ansible_server" {
@@ -86,7 +100,19 @@ variable "ansible_callback" {}
 
 variable "ansible_host_key" {}
 
-variable "aws_profile" {
-  description = "AWS profile to use for local provisioner"
-  default     = "default"
+/*
+  List of maps that defines worker instance groups to deploy
+
+  ex:
+  [
+    {
+      auto_scaling.min     = "1"
+      auto_scaling.max     = "6"
+      auto_scaling.desired = "2"
+      labels               = "namespace,role,default.testing"
+    }
+  ]
+*/
+variable "workers" {
+  default = []
 }

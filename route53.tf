@@ -1,8 +1,6 @@
 /*
    Create nternal cluster specific hosted DNS zone used to facilitate etcd
    bootstrapping via SRV records
- 
-   Dependencies: var.vpc_id
 */
 resource "aws_route53_zone" "internal" {
 
@@ -19,7 +17,7 @@ resource "aws_route53_zone" "internal" {
   /* what VPC to attach zone to (there should be no overlap between zones
      attached to a VPC
   */
-  vpc_id = "${var.vpc_id}"
+  vpc_id = "${element(data.aws_subnet.selected.*.vpc_id, 0)}"
 
   /* route53 support? */
   count = "${var.enable_route53}"

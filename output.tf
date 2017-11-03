@@ -17,3 +17,7 @@ output "etcd_elb_cname" {
 output "etcd_private_ips" {
   value = [ "${aws_instance.master.*.private_ip}" ]
 }
+
+output "instance_profile" {
+  value = "${aws_iam_instance_profile.kubernetes.name}"
+}

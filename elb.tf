@@ -36,13 +36,13 @@ resource "aws_elb" "api-internal" {
   }
 
   /* attach to all subnets an instance can live in */
-  subnets = [ "${var.subnets}" ]
+  subnets         = [ "${var.subnet_id}" ]
+  security_groups = [ "${aws_security_group.kubernetes-master.id}" ]
 
-  tags {
-    builtWith         = "terraform"
-    KubernetesCluster = "${var.name}"
-    Name              = "k8s-apiserver"
-  }
+  tags = "${merge(local.tags,
+                   map("Name", format("apiserver.%s", var.name)),
+                   map("visibility", "private"),
+                   var.tags)}"
 }
 
 /*
@@ -51,7 +51,7 @@ resource "aws_elb" "api-internal" {
   Dependencies: aws_instance.master
 */
 resource "aws_elb" "etcd-internal" {
-  
+
   name = "etcd-${var.name}-${var.internal-tld}"
 
   /* this should be an internal ELB only */
@@ -83,11 +83,11 @@ resource "aws_elb" "etcd-internal" {
   }
 
   /* attach to all subnets an instance can live in */
-  subnets = [ "${var.subnets}" ]
-  
-  tags {
-    builtWith         = "terraform"
-    KubernetesCluster = "${var.name}"
-    Name              = "k8s-etcd"
-  }
+  subnets         = [ "${var.subnet_id}" ]
+  security_groups = [ "${aws_security_group.kubernetes-master.id}" ]
+
+  tags = "${merge(local.tags,
+                   map("Name", format("etcd.%s", var.name)),
+                   map("visibility", "private"),
+                   var.tags)}"
 }
