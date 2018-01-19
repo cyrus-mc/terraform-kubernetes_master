@@ -11,6 +11,8 @@ locals {
   */
   ami = "${var.ami == "" ? local.region_ami : var.ami}"
 
+  instance_profile = "${var.instance_profile == "" ? aws_iam_instance_profile.kubernetes.id : var.instance_profile}"
+
   /*
     Default tags (loacl so you can't over-ride)
   */
@@ -92,13 +94,12 @@ variable "docker_volume_size" {
   default     = "500"
 }
 
-variable "ansible_server" {
-  description = "FQDN or IP of the Ansible server"
+variable "phone-home-url" { description = "HTTP(s) URL to phone home after provisioning" }
+variable "phone-home-params" {
+  description = "Key/value pairs to send as part of phone home request"
+  type        = "map"
+  default     = {}
 }
-
-variable "ansible_callback" {}
-
-variable "ansible_host_key" {}
 
 /*
   List of maps that defines worker instance groups to deploy
@@ -109,7 +110,7 @@ variable "ansible_host_key" {}
       auto_scaling.min     = "1"
       auto_scaling.max     = "6"
       auto_scaling.desired = "2"
-      labels               = "namespace,role,default.testing"
+      labels               = "namespace,role,default,testing"
     }
   ]
 */

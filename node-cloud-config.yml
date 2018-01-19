@@ -6,6 +6,10 @@ coreos:
     reboot-strategy: etcd-lock
 
   units:
+    - name: etcd2.service
+      command: stop
+    - name: fleet.service
+      command: stop
     - name: format-ephemeral.service
       command: start
       content: |
@@ -50,14 +54,22 @@ write-files:
     permissions: "0644"
     content: |
       ${CA}
-  - path: /etc/kubernetes/ssl/apiserver-key.pem
+  - path: /etc/kubernetes/ssl/worker-key.pem
     permissions: "0600"
     content: |
       ${CERTIFICATE_KEY}
-  - path: /etc/kubernetes/ssl/apiserver.pem
+  - path: /etc/kubernetes/ssl/worker.pem
     permissions: "0644"
     content: |
       ${CERTIFICATE}
+  - path: /etc/kubernetes/ssl/proxy-key.pem
+    permission: "0600"
+    content: |
+      ${PROXY_KEY}
+  - path: /etc/kubernetes/ssl/proxy.pem
+    permission: "0644"
+    content: |
+      ${PROXY_CERT}
   - path: /etc/ansible/facts.d/k8s_facts.fact
     permissions: "0755"
     content: |
@@ -65,11 +77,11 @@ write-files:
 
       cat <<EOF
       {
-        "api_servers" : "${API-SERVERS}",
-        "srv_domain" : "${SRV-DOMAIN}",
-        "etcd_servers" : ${ETCD_SERVERS},
         "cluster_name" : "${CLUSTER_NAME}",
-        "hostname": "${HOSTNAME}"
+        "etcd_elb" : "${ETCD_ELB}",
+        "etcd_servers" : ${ETCD_SERVERS},
+        "api_elb" : "${API_ELB}",
+        "labels" : ${LABELS}
       }
       EOF
   - path: /home/core/bootstrap-ansible.sh
@@ -88,7 +100,7 @@ write-files:
       PYPY_VERSION="5.3.1"
       PYPY_FLAVOR="linux_x86_64-portable"
 
-      # do this first so we don't re-format docker directory
+      # do this first so we don't reformat docker directory
       touch $PKG_HOME/.bootstrapped
 
       cd /tmp
@@ -138,8 +150,10 @@ write-files:
       $PYPY_HOME/bin/pip install docker-py
       $PYPY_HOME/bin/pip install boto
 
-      # now phone home to Ansible tower
-      hname=$(hostname -i)
-      curl --insecure -f -H 'Content-Type: application/json' -XPOST \
-        -d '{ "host_config_key": "${ANSIBLE_HOST_KEY}", "extra_vars": "{\"hostname\": \"'"$hname"'\"}" }' \
-        ${ANSIBLE_CALLBACK_URL}
+
+      # phone home
+      hname=$(hostname -s)
+      ipaddr=$(ip addr show eth0 | grep -Po 'inet \K[\d.]+')
+      curl --insecure -f -XPOST \
+        --data-urlencode json='{"parameter": [{"name":"hostname", "value":"'$hname'"}, {"name":"ipaddr", "value":"'$ipaddr'"}, {"name":"component", "value":"node"}]}' \
+        ${PHONE-HOME-URL}
