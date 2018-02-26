@@ -7,50 +7,9 @@ data "aws_subnet" "selected" {
   id = "${element(var.subnet_id, count.index)}"
 }
 
-/*
-  Define policies for S3, ELB and EC2 that are required for Kubernetes
-  auto-provisioning capabilities
-*/
-data "aws_iam_policy_document" "kubernetes" {
-  statement {
-    sid = "1"
-
-    actions = [
-      "s3:*",
-    ]
-
-    resources = [
-      "arn:aws:s3:::*"
-    ]
-  }
-
-  statement {
-    sid = "2"
-
-    actions = [
-      "elasticloadbalancing:*",
-    ]
-
-    resources = [
-      "*"
-    ]
-  }
-
-  statement {
-    sid = "3"
-
-    actions = [
-      "ec2:CreateSnapshot",
-      "ec2:DeleteSnapshot",
-      "ec2:ModifySnapshotAttribute",
-      "ec2:ResetSnapshotAttribute",
-      "ec2:*"
-    ]
-
-    resources = [
-      "*"
-    ]
-  }
+// load template that defines policies for k8s nodes
+data "template_file" "policy-kubernetes" {
+  template = "${file("${path.module}/templates/policies/kubernetes.tpl")}"
 }
 
 /*
@@ -568,7 +527,7 @@ resource "aws_iam_policy" "kubernetes" {
 
   name   = "Kubernetes-${var.name}"
   path   = "/"
-  policy = "${data.aws_iam_policy_document.kubernetes.json}"
+  policy = "${data.template_file.policy-kubernetes.rendered}"
 
   lifecycle {
     create_before_destroy = true
