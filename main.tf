@@ -1,49 +1,50 @@
-/*
-  Query subnet details
-*/
-data "aws_subnet" "selected" {
+/* query data sources */
+data aws_subnet "selected" {
   count = "${length(var.subnet_id)}"
 
   id = "${element(var.subnet_id, count.index)}"
 }
 
+data aws_region "current" {}
+
+data aws_route53_zone "main" {
+  zone_id = "${var.route53_zone}"
+}
+
 // load template that defines policies for k8s nodes
-data "template_file" "policy-kubernetes" {
+data template_file "policy-kubernetes" {
   template = "${file("${path.module}/templates/policies/kubernetes.tpl")}"
 }
 
 /*
   Create user data for each master/etcd instance
 */
-data "template_file" "control-plane-config" {
+data template_file "control-plane" {
+  count    =  "${var.api_instance_count}"
 
-  count    =  "${var.servers}"
-
-  template = "${file("${path.module}/control-plane-cloud-config.yml")}"
+  template = "${file("${path.module}/templates/user_data/control-plane.tpl")}"
 
   vars {
 
     /* the number of API servers */
-    API-SERVERS          = "${var.servers}"
+    API-SERVERS          = "${var.api_instance_count}"
 
     HOSTNAME             = "etcd-${count.index + 1}"
 
     /* the SRV domain for etcd bootstrapping (only relevant with route53 support) */
-    SRV-DOMAIN           = "${var.name}.${var.internal-tld}"
+    SRV-DOMAIN           = "${replace(data.aws_route53_zone.main.name, "/\\.$/", "")}"
 
     CLUSTER_NAME         = "${var.name}"
 
-    AWS_REGION           = "${var.region}"
+    AWS_REGION           = "${data.aws_region.current.name}"
 
     /* Point at the etcd ELB */
-    #ETCD_ELB             = "${aws_elb.etcd-internal.dns_name}"
+    #ETCD_ELB             = "${aws_elb.etcd.dns_name}"
 
     /* have to use the null resource here and not aws_instance.private_ip as it results in cicular depdendency */
     ETCD_SERVERS = "${jsonencode(null_resource.etcd_instance_ip.*.triggers.private_ip)}"
 
     ETCD_TOKEN   = "etcd-cluster-${var.name}"
-
-    PHONE-HOME-URL    = "${var.phone-home-url}"
 
     CA     = "${indent(6, tls_self_signed_cert.ca.cert_pem)}"
     CA_KEY = "${indent(6, tls_private_key.ca.private_key_pem)}"
@@ -55,11 +56,11 @@ data "template_file" "control-plane-config" {
 
 }
 
-data "template_file" "node-config" {
+data template_file "node" {
 
   count    = "${length(var.workers)}"
 
-  template = "${file("${path.module}/node-cloud-config.yml")}"
+  template = "${file("${path.module}/templates/user_data/node.tpl")}"
 
   vars {
     CLUSTER_NAME = "${var.name}"
@@ -79,15 +80,12 @@ data "template_file" "node-config" {
                length(split(",", lookup(var.workers[count.index], "labels", ""))) / 2,
                length(split(",", lookup(var.workers[count.index], "labels", ""))) )))}"
 
+    AWS_REGION   = "${data.aws_region.current.name}"
 
-    AWS_REGION = "${var.region}"
+    ETCD_ELB    = "${aws_elb.etcd.dns_name}"
+    ETCD_SERVERS = "${jsonencode(aws_instance.api.*.private_ip)}"
 
-    ETCD_ELB     = "${aws_elb.etcd-internal.dns_name}"
-    ETCD_SERVERS = "${jsonencode(aws_instance.master.*.private_ip)}"
-
-    API_ELB        = "${aws_elb.api-internal.dns_name}"
-
-    PHONE-HOME-URL       = "${var.phone-home-url}"
+    API_ELB = "${aws_elb.api.dns_name}"
 
     # certificates for kubelet and proxy components
     CA              = "${indent(6, tls_self_signed_cert.ca.cert_pem)}"
@@ -106,42 +104,38 @@ data "template_file" "node-config" {
   This allows us to decouple implicit dependency between DNS on EC2 resources and instead
   set an explicit dependency between EC2 on DNS
 */
-resource "null_resource" "etcd_instance_ip" {
+resource null_resource "etcd_instance_ip" {
 
-  count = "${var.servers}"
+  count = "${var.api_instance_count}"
 
   triggers {
-    private_ip = "${cidrhost(element(data.aws_subnet.selected.*.cidr_block, count.index), "${((1 + count.index) - (count.index %
- "${length(data.aws_subnet.selected.*.cidr_block)}") + 20)}")}"
+    private_ip = "${cidrhost(
+                       element(data.aws_subnet.selected.*.cidr_block, count.index),
+                       "${((1 + count.index) - (count.index % "${length(data.aws_subnet.selected.*.cidr_block)}") + 20)}"
+                     )}"
   }
 
 }
 
-/*
-  Create our API and etcd instances
-
-  This is a one time creation due to fact etcd goes through an initial
-  bootstrap
-
-*/
-resource "aws_instance" "master" {
+/* create API and etcd EC2 instances */
+resource aws_instance "api" {
 
   /* number of instances, should be an odd number */
-  count = "${var.servers}"
+  count = "${var.api_instance_count}"
 
   /* define details about the instance (AMI, type) */
-  ami           = "${local.ami}"
-  instance_type = "${var.instance_type}"
+  ami           = "${local.api_instance_ami}"
+  instance_type = "${var.api_instance_type}"
 
   /* define network details about the instance (subnet, private IP) */
   subnet_id              = "${element(var.subnet_id, count.index)}"
   private_ip             = "${element(null_resource.etcd_instance_ip.*.triggers.private_ip, count.index)}"
-  vpc_security_group_ids = [ "${aws_security_group.kubernetes-master.id}" ]
+  vpc_security_group_ids = [ "${aws_security_group.api.id}" ]
 
   /* define build details (user_data, key, instance profile) */
   key_name             = "${var.key_pair}"
-  user_data            = "${element(data.template_file.control-plane-config.*.rendered, count.index)}"
-  iam_instance_profile = "${local.instance_profile}"
+  user_data            = "${element(data.template_file.control-plane.*.rendered, count.index)}"
+  iam_instance_profile = "${local.api_instance_profile}"
 
   /* increase root device space */
   root_block_device {
@@ -157,7 +151,7 @@ resource "aws_instance" "master" {
 
   tags  = "${merge(local.tags,
                    map("Name", format("etcd-%d.%s", count.index + 1, var.name)),
-                   map("visibility", "private", "role", "etcd,apiserver"),
+                   map("visibility", "private", "role", "api"),
                    var.tags)}"
 
   /* all DNS entries required for successful etcd bootstrapping */
@@ -166,11 +160,38 @@ resource "aws_instance" "master" {
 
 }
 
+/* create A record for each etcd server */
+resource aws_route53_record "A-etcd" {
+  /* route53 support? */
+  count   = "${var.api_instance_count * local.enable_route53}"
+
+  name    = "etcd-${count.index + 1}"
+
+  records = [ "${element(null_resource.etcd_instance_ip.*.triggers.private_ip, count.index)}" ]
+  ttl     = "300"
+  type    = "A"
+  zone_id = "${data.aws_route53_zone.main.zone_id}"
+}
+
+/* create SRV record used to bootstrap etcd cluster  */
+resource aws_route53_record "SRV-etcd" {
+  /* route53 support? */
+  count = "${local.enable_route53}"
+
+  name = "_etcd-server._tcp"
+
+  ttl     = "300"
+  type    = "SRV"
+  records = [ "${formatlist("0 0 2380 %v", aws_route53_record.A-etcd.*.fqdn)}" ]
+
+  zone_id = "${data.aws_route53_zone.main.zone_id}"
+}
+
 /*
   Create auto-scaling group and corresponding launch confiruation based on the
   number of worker/instance details defined
 */
-resource "aws_launch_configuration" "workers" {
+resource aws_launch_configuration "wrk" {
 
   count = "${length(var.workers)}"
 
@@ -190,38 +211,36 @@ resource "aws_launch_configuration" "workers" {
   }
 
   /* specify the build details (AMI, instance type, key */
-  image_id             = "${local.ami}"
-  instance_type        = "${lookup(var.workers[count.index], "instance_type", var.instance_type)}"
-  iam_instance_profile = "${local.instance_profile}"
+  image_id             = "${local.wrk_instance_ami}"
+  instance_type        = "${lookup(var.workers[count.index], "instance_type", var.wrk_instance_type)}"
+  iam_instance_profile = "${local.wrk_instance_profile}"
   key_name             = "${var.key_pair}"
 
   /* user data supplied to provision each instance */
-  user_data = "${element(data.template_file.node-config.*.rendered, count.index)}"
+  user_data = "${element(data.template_file.node.*.rendered, count.index)}"
 
   /* specify network details (security group) */
-  security_groups = [ "${aws_security_group.kubernetes-master.id}" ]
+  security_groups = [ "${aws_security_group.wrk.id}" ]
 
   lifecycle {
     create_before_destroy = true
   }
-
 }
 
 
-resource "aws_autoscaling_group" "workers" {
-
+resource aws_autoscaling_group "wrk" {
   /* create as many auto-scaling groups as required */
   count                = "${length(var.workers)}"
 
-  name_prefix = "${format("kubernetes.%s.%d", var.name, count.index)}"
+  name_prefix = "${format("k8s-%s-%d", var.name, count.index)}"
 
   /* tie this ASG to the corresponding launch configuration created above */
-  launch_configuration = "${element(aws_launch_configuration.workers.*.name, count.index)}"
+  launch_configuration = "${element(aws_launch_configuration.wrk.*.name, count.index)}"
 
   health_check_grace_period = 60
 
   /* controls how health check is done */
-  health_check_type         = "EC2"
+  health_check_type = "EC2"
 
   force_delete     = true
 
@@ -236,11 +255,11 @@ resource "aws_autoscaling_group" "workers" {
   tags = [
       {
         key                 = "Name"
-        value               = "worker.${var.name}"
+        value               = "k8s-worker.${var.name}"
         propagate_at_launch = true
       },
       {
-        key                 = "builtWith"
+        key                 = "built-with"
         value               = "terraform"
         propagate_at_launch = true
       },
@@ -251,7 +270,7 @@ resource "aws_autoscaling_group" "workers" {
       },
       {
         key                 = "role"
-        value               = "worker,proxy"
+        value               = "worker"
         propagate_at_launch = true
       },
       {
@@ -272,9 +291,9 @@ resource "aws_autoscaling_group" "workers" {
 
   Dependencies: aws_instance.master
 */
-resource "aws_elb" "api-internal" {
+resource aws_elb "api" {
 
-  name = "apiserver-${var.name}-${var.internal-tld}"
+  name = "k8s-apiserver-${var.name}"
 
   /* this should be an internal ELB only */
   internal = true
@@ -282,7 +301,7 @@ resource "aws_elb" "api-internal" {
   /* distribute incoming requests evenly across all instances */
   cross_zone_load_balancing = true
 
-  instances    = [ "${aws_instance.master.*.id}" ]
+  instances    = [ "${aws_instance.api.*.id}" ]
   idle_timeout = 3600
 
   listener {
@@ -306,7 +325,7 @@ resource "aws_elb" "api-internal" {
 
   /* attach to all subnets an instance can live in */
   subnets         = [ "${var.subnet_id}" ]
-  security_groups = [ "${aws_security_group.kubernetes-master.id}" ]
+  security_groups = [ "${aws_security_group.api.id}" ]
 
   tags = "${merge(local.tags,
                    map("Name", format("apiserver.%s", var.name)),
@@ -319,9 +338,9 @@ resource "aws_elb" "api-internal" {
 
   Dependencies: aws_instance.master
 */
-resource "aws_elb" "etcd-internal" {
+resource aws_elb "etcd" {
 
-  name = "etcd-${var.name}-${var.internal-tld}"
+  name = "k8s-etcd-${var.name}"
 
   /* this should be an internal ELB only */
   internal = true
@@ -329,7 +348,7 @@ resource "aws_elb" "etcd-internal" {
   /* distribute incoming requests evenly across all instances */
   cross_zone_load_balancing = true
 
-  instances    = [ "${aws_instance.master.*.id}" ]
+  instances    = [ "${aws_instance.api.*.id}" ]
   idle_timeout = 3600
 
   listener {
@@ -353,7 +372,7 @@ resource "aws_elb" "etcd-internal" {
 
   /* attach to all subnets an instance can live in */
   subnets         = [ "${var.subnet_id}" ]
-  security_groups = [ "${aws_security_group.kubernetes-master.id}" ]
+  security_groups = [ "${aws_security_group.api.id}" ]
 
   tags = "${merge(local.tags,
                    map("Name", format("etcd.%s", var.name)),
@@ -366,141 +385,119 @@ resource "aws_elb" "etcd-internal" {
   Kubernetes servers (masters and workers)
 
 */
-resource "aws_security_group" "kubernetes-master" {
-
-  name = "kubernetes.${var.name}"
-
-  description = "Definition of inbound and outbounc traffic for Kubernetes servers"
+resource aws_security_group "api" {
+  name = "${format("k8s-%s-api", var.name)}"
 
   /* link to the correct VPC */
   vpc_id = "${element(data.aws_subnet.selected.*.vpc_id, 0)}"
 
-  /* tag the resource */
-  tags = "${merge(local.tags,
-                  map("Name", format("kubernetes.%s", var.name)),
-                  var.tags)}"
-
+  tags = "${merge(var.tags,
+                  map("Name", format("k8s-%s-api", var.name)),
+                  local.tags)}"
 }
 
-resource "aws_security_group_rule" "ingress" {
+resource aws_security_group_rule "api-ingress" {
+  count = "${length(var.api_sg_inbound_rules)}"
 
   /* this is an ingress security rule */
   type = "ingress"
 
   /* specify port range and protocol that is allowed */
-  from_port = 0
-  to_port   = 0
-  protocol  = "-1"
+  from_port = "${lookup(var.api_sg_inbound_rules[count.index], "from_port")}"
+  to_port   = "${lookup(var.api_sg_inbound_rules[count.index], "to_port")}"
+  protocol  = "${lookup(var.api_sg_inbound_rules[count.index], "protocol")}"
 
   /* specify the allowed CIDR block */
-  cidr_blocks = [ "0.0.0.0/0" ]
+  cidr_blocks =  [ "${lookup(var.api_sg_inbound_rules[count.index], "cidr_blocks")}" ]
 
   /* link to the above created security group */
-  security_group_id = "${aws_security_group.kubernetes-master.id}"
+  security_group_id = "${aws_security_group.api.id}"
 
 }
 
-resource "aws_security_group_rule" "egress" {
+resource aws_security_group_rule "egress" {
+  count = "${length(var.api_sg_outbound_rules)}"
 
   /* this is an egress security rule */
   type = "egress"
 
-  /* specify the port range and protocol that is allowed */
-  from_port = 0
-  to_port   = 0
-  protocol  = "-1"
+  /* specify port range and protocol that is allowed */
+  from_port = "${lookup(var.api_sg_outbound_rules[count.index], "from_port")}"
+  to_port   = "${lookup(var.api_sg_outbound_rules[count.index], "to_port")}"
+  protocol  = "${lookup(var.api_sg_outbound_rules[count.index], "protocol")}"
 
   /* specify the allowed CIDR block */
-  cidr_blocks = [ "0.0.0.0/0" ]
+  cidr_blocks = [ "${lookup(var.api_sg_outbound_rules[count.index], "cidr_blocks")}" ]
 
   /* link to the above created security group */
-  security_group_id = "${aws_security_group.kubernetes-master.id}"
-
+  security_group_id = "${aws_security_group.api.id}"
 }
 
-/*
-   Create nternal cluster specific hosted DNS zone used to facilitate etcd
-   bootstrapping via SRV records
-*/
-resource "aws_route53_zone" "internal" {
+resource aws_security_group "wrk" {
+  name = "${format("k8s-%s-wrk", var.name)}"
 
-  comment = "Kubernetes cluster ${var.name}"
-
-  name    = "${var.name}.${var.internal-tld}"
-
-  tags {
-    builtWith         = "terraform"
-    domain            = "${var.name}.${var.internal-tld}"
-    KubernetesCluster = "${var.name}"
-  }
-
-  /* what VPC to attach zone to (there should be no overlap between zones
-     attached to a VPC
-  */
+  /* link to the correct VPC */
   vpc_id = "${element(data.aws_subnet.selected.*.vpc_id, 0)}"
 
-  /* route53 support? */
-  count = "${var.enable_route53}"
+  tags = "${merge(var.tags,
+                  map("Name", format("k8s-%s-wrk", var.name)),
+                  local.tags)}"
+}
+
+resource "aws_security_group_rule" "wrk-ingress" {
+  count = "${length(var.wrk_sg_inbound_rules)}"
+
+  /* this is an ingress security rule */
+  type = "ingress"
+
+  /* specify port range and protocol that is allowed */
+  from_port = "${lookup(var.wrk_sg_inbound_rules[count.index], "from_port")}"
+  to_port   = "${lookup(var.wrk_sg_inbound_rules[count.index], "to_port")}"
+  protocol  = "${lookup(var.wrk_sg_inbound_rules[count.index], "protocol")}"
+
+  /* specify the allowed CIDR block */
+  cidr_blocks =  [ "${lookup(var.wrk_sg_inbound_rules[count.index], "cidr_blocks")}" ]
+
+  /* link to the above created security group */
+  security_group_id = "${aws_security_group.wrk.id}"
 
 }
 
-/*
-  Create A records for each etcd instance
+resource "aws_security_group_rule" "wrk-egress" {
+  count = "${length(var.wrk_sg_outbound_rules)}"
 
-  Dependencies: aws_route53_zone.internal, null_resource.etcd_instance_ip
-*/
-resource "aws_route53_record" "A-etcd" {
+  /* this is an egress security rule */
+  type = "egress"
 
-  /* route53 support? */
-  count   = "${var.servers * var.enable_route53}"
+  /* specify port range and protocol that is allowed */
+  from_port = "${lookup(var.wrk_sg_outbound_rules[count.index], "from_port")}"
+  to_port   = "${lookup(var.wrk_sg_outbound_rules[count.index], "to_port")}"
+  protocol  = "${lookup(var.wrk_sg_outbound_rules[count.index], "protocol")}"
 
-  name    = "etcd-${count.index + 1}"
+  /* specify the allowed CIDR block */
+  cidr_blocks = [ "${lookup(var.wrk_sg_outbound_rules[count.index], "cidr_blocks")}" ]
 
-  records = [ "${element(null_resource.etcd_instance_ip.*.triggers.private_ip, count.index)}" ]
-  ttl     = "300"
-  type    = "A"
-  zone_id = "${aws_route53_zone.internal.zone_id}"
-
+  /* link to the above created security group */
+  security_group_id = "${aws_security_group.wrk.id}"
 }
 
-/*
-  Create SRV record used to bootstrap etcd cluster
-
-  Dependencies: aws_route53_zone.internal, aws_route53_record.A-etcd
-*/
-resource "aws_route53_record" "SRV-etcd" {
-
-  name = "_etcd-server._tcp"
-
-  ttl     = "300"
-  type    = "SRV"
-  records = [ "${formatlist("0 0 2380 %v", aws_route53_record.A-etcd.*.fqdn)}" ]
-
-  zone_id = "${aws_route53_zone.internal.zone_id}"
-
-  /* route53 support? */
-  count = "${var.enable_route53}"
-
-}
 
 /*
   Create CNAME record for API ELB
 
-  Dependencies: aws_route53_zone.internal, aws_elb.api-internal
+  Dependencies: aws_route53_zone.internal, aws_elb.api
 */
-resource "aws_route53_record" "CNAME-apiserver" {
+resource aws_route53_record "cname-api" {
+  /* route53 support? */
+  count = "${local.enable_route53}"
 
-  name = "apiserver"
+  name    = "apiserver"
 
-  records = [ "${aws_elb.api-internal.dns_name}" ]
+  records = [ "${aws_elb.api.dns_name}" ]
   ttl     = "60"
   type    = "CNAME"
 
-  zone_id = "${aws_route53_zone.internal.zone_id}"
-
-  /* route53 support? */
-  count = "${var.enable_route53}"
-
+  zone_id = "${data.aws_route53_zone.main.zone_id}"
 }
 
 /*
@@ -508,36 +505,32 @@ resource "aws_route53_record" "CNAME-apiserver" {
 
   Dependencies: aws_route53_zone.internal, aws_elb.etcd-internal
 */
-resource "aws_route53_record" "CNAME-etcd" {
+resource aws_route53_record "cname-etcd" {
+  /* route53 support? */
+  count = "${local.enable_route53}"
 
-  name = "etcd"
+  name      = "etcd"
 
-  records = [ "${aws_elb.etcd-internal.dns_name}" ]
+  records = [ "${aws_elb.etcd.dns_name}" ]
   ttl     = "60"
   type    = "CNAME"
 
-  zone_id = "${aws_route53_zone.internal.zone_id}"
-
-  /* route53 support? */
-  count = "${var.enable_route53}"
-
+  zone_id = "${data.aws_route53_zone.main.zone_id}"
 }
 
 resource "aws_iam_policy" "kubernetes" {
-
-  name   = "Kubernetes-${var.name}"
+  name   = "k8s-${var.name}"
   path   = "/"
   policy = "${data.template_file.policy-kubernetes.rendered}"
 
   lifecycle {
     create_before_destroy = true
   }
-
 }
 
 
 resource "aws_iam_role" "kubernetes" {
-  name = "Kubernetes.${var.name}"
+  name = "k8s-${var.name}"
 
   assume_role_policy = <<EOF
 {
@@ -556,7 +549,7 @@ EOF
 }
 
 resource "aws_iam_instance_profile" "kubernetes" {
-  name = "Kubernetes-${var.name}"
+  name = "k8s-${var.name}"
   role = "${aws_iam_role.kubernetes.name}"
 }
 

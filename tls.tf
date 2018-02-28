@@ -38,7 +38,7 @@ resource "tls_cert_request" "apiserver" {
     "kubernetes.default",
     "kubernetes.default.svc",
     "kubernetes.default.svc.cluster.local",
-    "*.${var.region}.elb.amazonaws.com"
+    "*.${data.aws_region.current.name}.elb.amazonaws.com"
   ]
 
   ip_addresses = [

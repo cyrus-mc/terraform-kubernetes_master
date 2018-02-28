@@ -2,87 +2,53 @@
 #         Local Variable definitions          #
 ###############################################
 locals {
+  /* use default CoreOS AMI if one not supplied */
+  api_instance_ami = "${var.api_instance_ami == "" ? lookup(var.coreos_ami, data.aws_region.current.name) : var.api_instance_ami}"
+  wrk_instance_ami = "${var.wrk_instance_ami == "" ? lookup(var.coreos_ami, data.aws_region.current.name) : var.wrk_instance_ami}"
 
-  /* lookup the AMI based on region */
-  region_ami = "${lookup(var.coreos_ami, var.region)}"
+  /* use supplied profile or internally created one */
+  api_instance_profile = "${var.api_instance_profile == "" ? aws_iam_instance_profile.kubernetes.id : var.api_instance_profile}"
+  wrk_instance_profile = "${var.wrk_instance_profile == "" ? aws_iam_instance_profile.kubernetes.id : var.wrk_instance_profile}"
 
-  /*
-    Either use supplied AMI or lookup based on region
-  */
-  ami = "${var.ami == "" ? local.region_ami : var.ami}"
+  /* if a zone is supplied enable route53 support */
+  enable_route53 = "${var.route53_zone == "" ? 0 : 1 }"
 
-  instance_profile = "${var.instance_profile == "" ? aws_iam_instance_profile.kubernetes.id : var.instance_profile}"
-
-  /*
-    Default tags (loacl so you can't over-ride)
-  */
+  /* default tags */
   tags = {
-    builtWith         = "terraform"
+    built-with         = "terraform"
     KubernetesCluster = "${var.name}"
   }
-
 }
 
-variable "region" {
-  description = "AWS region where the K8s cluster will be deployed"
-}
+variable name { description = "Cluster name" }
 
-variable "internal-tld" {
-  description = "Top-level domain for K8s clusters (defaults to k8s)"
-  default     = "k8s"
-}
-
-variable "name" {
-  description = "Cluster name (used to create private hosted zone)"
-}
-
-/* variables controlling instance creation (number, AMI, type) */
-variable "servers" {
-  description = "Number of instances to create (should be an odd number)"
-  default     = 3
-}
-
-variable "ami" {
-  description = "The Amazon Machine Image (AMI)"
-  default     = ""
-}
-
-variable "coreos_ami" {
-  description = "Current list of CoreOS AMI based on region"
-  type        = "map"
+variable coreos_ami {
+  type = "map"
   default {
     "us-west-2" = "ami-4e804136"
   }
 }
 
-variable "instance_type" {
-  description = "EC2 instance type"
-  default     = "t2.large"
-}
+/* api EC2 settings */
+variable api_instance_count   { default = 3 }
+variable api_instance_type    { default = "t2.large" }
+variable api_instance_profile { default = "" }
+variable api_instance_ami     { default = "" }
 
-variable "subnet_id" {
-  description = "List of subnets where instances will be deployed to"
-  type        = "list"
-}
+/* worker EC2 settings */
+variable wrk_instance_type    { default = "t2.large" }
+variable wrk_instance_profile { default = "" }
+variable wrk_instance_ami     { default = "" }
 
-variable "instance_profile" {
-  description = "The IAM role to attach to K8s nodes"
-  default     = ""
-}
+variable subnet_id { type = "list" }
 
-variable "key_pair" {
-  description = "SSH key-pair to attach to K8s nodes"
-}
+variable key_pair {}
 
-variable "tags" {
-  description = "A map of tags to add to all resources"
+variable tags {
   default     = {}
 }
 
-variable "enable_route53" {
-  description = "Enable route 53 support"
-  default     = false
-}
+variable route53_zone   {}
 
 variable "root_volume_size" {
   description = "Size of the instance root volume"
@@ -94,19 +60,13 @@ variable "docker_volume_size" {
   default     = "500"
 }
 
-variable "phone-home-url" { description = "HTTP(s) URL to phone home after provisioning" }
-variable "phone-home-params" {
-  description = "Key/value pairs to send as part of phone home request"
-  type        = "map"
-  default     = {}
-}
-
 /*
   List of maps that defines worker instance groups to deploy
 
   ex:
   [
     {
+      instance_type        = "t2.xlarge"
       auto_scaling.min     = "1"
       auto_scaling.max     = "6"
       auto_scaling.desired = "2"
@@ -114,6 +74,60 @@ variable "phone-home-params" {
     }
   ]
 */
-variable "workers" {
+variable workers {
   default = []
 }
+
+/* security group settings */
+variable api_sg_inbound_rules {
+  type    = "list"
+  default =
+    [
+      {
+        from_port   = "-1"
+        to_port     = "-1"
+        protocol    = "all"
+        cidr_blocks = "0.0.0.0/0"
+      }
+    ]
+}
+
+variable api_sg_outbound_rules {
+  type    = "list"
+  default =
+    [
+      {
+        from_port   = "-1"
+        to_port     = "-1"
+        protocol    = "all"
+        cidr_blocks = "0.0.0.0/0"
+      }
+    ]
+}
+
+variable wrk_sg_inbound_rules {
+  type    = "list"
+  default =
+    [
+      {
+        from_port   = "-1"
+        to_port     = "-1"
+        protocol    = "all"
+        cidr_blocks = "0.0.0.0/0"
+      }
+    ]
+}
+
+variable wrk_sg_outbound_rules {
+  type    = "list"
+  default =
+    [
+      {
+        from_port   = "-1"
+        to_port     = "-1"
+        protocol    = "all"
+        cidr_blocks = "0.0.0.0/0"
+      }
+    ]
+}
+
