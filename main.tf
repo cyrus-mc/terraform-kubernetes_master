@@ -14,6 +14,11 @@ data aws_route53_zone "main" {
 // load template that defines policies for k8s nodes
 data template_file "policy-kubernetes" {
   template = "${file("${path.module}/templates/policies/kubernetes.tpl")}"
+  template = "${file("${format("%s/templates/policies/kubernetes.%s", path.module, replace(replace(var.enable_ark, "/^1/", "ark.tpl"), "/^0/", "tpl"))}")}"
+
+  vars {
+    ARK_S3_BUCKET = "${aws_s3_bucket.ark.arn}"
+  }
 }
 
 /*
@@ -517,6 +522,27 @@ resource aws_route53_record "cname-etcd" {
 
   zone_id = "${data.aws_route53_zone.main.zone_id}"
 }
+
+/* create S3 bucket for ark if enabled */
+resource aws_s3_bucket "ark" {
+  count = "${var.enable_ark}"
+
+  bucket = "${format("ark.%s", replace(data.aws_route53_zone.main.name, "/\\.$/", ""))}"
+
+  /* the canned ACL to apply */
+  acl = "private"
+
+  /* this is used for backups, so versioning should be enabled */
+  versioning {
+    enabled = true
+  }
+
+  tags {
+    build-with        = "terraform"
+    KubernetesCluster = "${var.name}"
+  }
+}
+
 
 resource "aws_iam_policy" "kubernetes" {
   name   = "k8s-${var.name}"
