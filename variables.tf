@@ -131,3 +131,5 @@ variable wrk_sg_outbound_rules {
     ]
 }
 
+/* enable Heptio ARK support */
+variable enable_ark { default = false }
