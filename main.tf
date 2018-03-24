@@ -257,9 +257,21 @@ resource aws_autoscaling_group "wrk" {
   /* subnet(s) to launch instances in */
   vpc_zone_identifier = [ "${var.subnet_id}" ]
 
+  /* set the name based on role */
   tags  = "${concat(local.tags_asg_format,
                     list(zipmap(local.key_list, list("role", "worker", "true")),
-                         zipmap(local.key_list, list("Name", format("k8s-worker.%s", var.name), "true")),
+                         zipmap(local.key_list, list("Name",
+                                                     format("k8s-worker.%s",
+                                                            element(split(",",
+                                                                          lookup(var.workers[count.index], "labels", "")
+                                                                         ),
+                                                                    (index(split(",",
+                                                                          lookup(var.workers[count.index], "labels", "")
+                                                                          ),
+                                                                          "role") + (length(split(",",
+                                                                                                  lookup(var.workers[count.index], "labels", "")
+                                                                                                 )) / 2))
+                                                                  )), "true")),
                          zipmap(local.key_list, list("labels", lookup(var.workers[count.index], "labels", ""), "true"))
                         ))}"
 
