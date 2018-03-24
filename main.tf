@@ -257,33 +257,11 @@ resource aws_autoscaling_group "wrk" {
   /* subnet(s) to launch instances in */
   vpc_zone_identifier = [ "${var.subnet_id}" ]
 
-  tags = [
-      {
-        key                 = "Name"
-        value               = "k8s-worker.${var.name}"
-        propagate_at_launch = true
-      },
-      {
-        key                 = "built-with"
-        value               = "terraform"
-        propagate_at_launch = true
-      },
-      {
-        key                 = "visibility"
-        value               = "private"
-        propagate_at_launch = true
-      },
-      {
-        key                 = "role"
-        value               = "worker"
-        propagate_at_launch = true
-      },
-      {
-        key                 = "KubernetesCluster"
-        value               = "${var.name}"
-        propagate_at_launch = true
-      }
-    ]
+  tags  = "${concat(local.tags_asg_format,
+                    list(zipmap(local.key_list, list("role", "worker", "true")),
+                         zipmap(local.key_list, list("Name", format("k8s-worker.%s", var.name), "true")),
+                         zipmap(local.key_list, list("labels", lookup(var.workers[count.index], "labels", ""), "true"))
+                        ))}"
 
   lifecycle {
     create_before_destroy = true
