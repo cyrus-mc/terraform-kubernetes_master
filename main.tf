@@ -154,10 +154,15 @@ resource aws_instance "api" {
     volume_type = "gp2"
   }
 
-  tags  = "${merge(local.tags,
-                   map("Name", format("etcd-%d.%s", count.index + 1, var.name)),
-                   map("visibility", "private", "role", "api"),
-                   var.tags)}"
+  tags  = "${merge(var.tags,
+                   local.tags,
+                   map("role", "api"),
+                   map("Name", format("k8s-api-%d", count.index + 1)))}"
+
+  volume_tags  = "${merge(var.tags,
+                          local.tags,
+                          map("role", "api"),
+                          map("Name", format("k8s-api-%d", count.index + 1)))}"
 
   /* all DNS entries required for successful etcd bootstrapping */
   depends_on = [ "aws_route53_record.A-etcd",
@@ -322,10 +327,9 @@ resource aws_elb "api" {
   subnets         = [ "${var.subnet_id}" ]
   security_groups = [ "${aws_security_group.api.id}" ]
 
-  tags = "${merge(local.tags,
-                   map("Name", format("apiserver.%s", var.name)),
-                   map("visibility", "private"),
-                   var.tags)}"
+  tags = "${merge(var.tags,
+                  local.tags,
+                   map("Name", format("apiserver.%s", var.name)))}"
 }
 
 /*
@@ -369,10 +373,9 @@ resource aws_elb "etcd" {
   subnets         = [ "${var.subnet_id}" ]
   security_groups = [ "${aws_security_group.api.id}" ]
 
-  tags = "${merge(local.tags,
-                   map("Name", format("etcd.%s", var.name)),
-                   map("visibility", "private"),
-                   var.tags)}"
+  tags = "${merge(var.tags,
+                  local.tags,
+                   map("Name", format("etcd.%s", var.name)))}"
 }
 
 /*
