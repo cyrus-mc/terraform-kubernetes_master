@@ -30,7 +30,6 @@ data template_file "control-plane" {
   template = "${file("${path.module}/templates/user_data/control-plane.tpl")}"
 
   vars {
-
     /* the number of API servers */
     API-SERVERS          = "${var.api_instance_count}"
 
@@ -56,7 +55,6 @@ data template_file "control-plane" {
 
     CERTIFICATE     = "${indent(6, tls_locally_signed_cert.apiserver.cert_pem)}"
     CERTIFICATE_KEY = "${indent(6, tls_private_key.apiserver.private_key_pem)}"
-
   }
 
 }
@@ -69,21 +67,6 @@ data template_file "node" {
 
   vars {
     CLUSTER_NAME = "${var.name}"
-
-    /*
-      This is ugly but terraform has issues with nested maps
-
-      This takes a string of format "key,value,key,value,..." and generates
-      a map of key, value pairs which is then passed to jsonencode
-    */
-
-    LABELS = "${jsonencode(
-         zipmap(
-           slice(split(",", lookup(var.workers[count.index], "labels", "")), 0,
-               length(split(",", lookup(var.workers[count.index], "labels", ""))) / 2 ),
-           slice(split(",", lookup(var.workers[count.index], "labels", "")),
-               length(split(",", lookup(var.workers[count.index], "labels", ""))) / 2,
-               length(split(",", lookup(var.workers[count.index], "labels", ""))) )))}"
 
     AWS_REGION   = "${data.aws_region.current.name}"
 
@@ -99,7 +82,6 @@ data template_file "node" {
 
     PROXY_CERT = "${indent(6, tls_locally_signed_cert.proxy.cert_pem)}"
     PROXY_KEY  = "${indent(6, tls_private_key.proxy.private_key_pem)}"
-
   }
 }
 
@@ -277,7 +259,20 @@ resource aws_autoscaling_group "wrk" {
                                                                                                   lookup(var.workers[count.index], "labels", "")
                                                                                                  )) / 2))
                                                                   )), "true")),
-                         zipmap(local.key_list, list("labels", lookup(var.workers[count.index], "labels", ""), "true"))
+                         zipmap(local.key_list, list("labels", jsonencode(
+                                                                 zipmap(
+                                                                   slice(
+                                                                     split(",", lookup(var.workers[count.index], "labels", "")),
+                                                                     0,
+                                                                     length(split(",", lookup(var.workers[count.index], "labels", ""))) / 2
+                                                                   ),
+                                                                   slice(
+                                                                     split(",", lookup(var.workers[count.index], "labels", "")),
+                                                                     length(split(",", lookup(var.workers[count.index], "labels", ""))) / 2,
+                                                                     length(split(",", lookup(var.workers[count.index], "labels", "")))
+                                                                   )
+                                                                 )
+                                                               ), "true"))
                         ))}"
 
   lifecycle {

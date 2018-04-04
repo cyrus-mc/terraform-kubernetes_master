@@ -80,8 +80,7 @@ write-files:
         "cluster_name" : "${CLUSTER_NAME}",
         "etcd_elb" : "${ETCD_ELB}",
         "etcd_servers" : ${ETCD_SERVERS},
-        "api_elb" : "${API_ELB}",
-        "labels" : ${LABELS}
+        "api_elb" : "${API_ELB}"
       }
       EOF
   - path: /home/core/bootstrap-ansible.sh
