@@ -6,10 +6,6 @@ coreos:
     reboot-strategy: etcd-lock
 
   units:
-    - name: etcd2.service
-      command: stop
-    - name: fleet.service
-      command: stop
     - name: format-ephemeral.service
       command: start
       content: |
