@@ -17,3 +17,5 @@ output "admin-key" { value = "${tls_private_key.admin.private_key_pem}" }
 output "admin-cert" { value = "${tls_locally_signed_cert.admin.cert_pem}" }
 
 #output "trigger" { value = ["${aws_instance.master.*.private_ip}"] }
+
+output "autoScalingGroupName" { value = [ "${aws_autoscaling_group.wrk.*.name}" ] }
