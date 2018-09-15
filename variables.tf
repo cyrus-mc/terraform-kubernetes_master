@@ -138,7 +138,7 @@ variable name { description = "Cluster name" }
 variable coreos_ami {
   type = "map"
   default {
-    "us-west-2" = "ami-4e804136"
+    "us-west-2" = "ami-6666fe1e"
   }
 }
 
@@ -170,7 +170,7 @@ variable "root_volume_size" {
 
 variable "docker_volume_size" {
   description = "Size of the docker volume"
-  default     = "500"
+  default     = "200"
 }
 
 /*
