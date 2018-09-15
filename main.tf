@@ -111,7 +111,8 @@ resource aws_instance "api" {
   count = "${var.api_instance_count}"
 
   /* define details about the instance (AMI, type) */
-  ami           = "${local.api_instance_ami}"
+  #ami           = "${local.api_instance_ami}"
+  ami =            "ami-4e804136"
   instance_type = "${var.api_instance_type}"
 
   /* define network details about the instance (subnet, private IP) */
@@ -139,6 +140,7 @@ resource aws_instance "api" {
   tags  = "${merge(var.tags,
                    local.tags,
                    map("role", "api"),
+                   map("kubernetes.io/role", "master"),
                    map("Name", format("k8s-api-%d", count.index + 1)))}"
 
   volume_tags  = "${merge(var.tags,
@@ -247,6 +249,7 @@ resource aws_autoscaling_group "wrk" {
   /* set the name based on role */
   tags  = "${concat(local.tags_asg_format,
                     list(zipmap(local.key_list, list("role", "worker", "true")),
+                         zipmap(local.key_list, list("kubernetes.io/role", "master", "true")),
                          zipmap(local.key_list, list("Name",
                                                      format("k8s-worker.%s",
                                                             element(split(",",
