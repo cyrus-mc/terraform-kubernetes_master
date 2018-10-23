@@ -11,16 +11,6 @@ data aws_route53_zone "main" {
   zone_id = "${var.route53_zone}"
 }
 
-// load template that defines policies for k8s nodes
-data template_file "policy-kubernetes" {
-  template = "${file("${path.module}/templates/policies/kubernetes.tpl")}"
-  template = "${file("${format("%s/templates/policies/kubernetes.%s", path.module, replace(replace(var.enable_ark, "/^1/", "ark.tpl"), "/^0/", "tpl"))}")}"
-
-  vars {
-    ARK_S3_BUCKET = "${aws_s3_bucket.ark.arn}"
-  }
-}
-
 /*
   Create user data for each master/etcd instance
 */
@@ -123,10 +113,11 @@ resource aws_instance "api" {
   /* define build details (user_data, key, instance profile) */
   key_name             = "${var.key_pair}"
   user_data            = "${element(data.template_file.control-plane.*.rendered, count.index)}"
-  iam_instance_profile = "${local.api_instance_profile}"
+  iam_instance_profile = "${aws_iam_instance_profile.master.id}"
 
   /* increase root device space */
   root_block_device {
+    volume_type = "standard"
     volume_size = "${var.root_volume_size}"
   }
 
@@ -141,6 +132,7 @@ resource aws_instance "api" {
                    local.tags,
                    map("role", "api"),
                    map("kubernetes.io/role", "master"),
+                   map("labels", "{ \"kubernetes.io/role\": \"master\" }"),
                    map("Name", format("k8s-api-%d", count.index + 1)))}"
 
   volume_tags  = "${merge(var.tags,
@@ -207,7 +199,7 @@ resource aws_launch_configuration "wrk" {
   /* specify the build details (AMI, instance type, key */
   image_id             = "${local.wrk_instance_ami}"
   instance_type        = "${lookup(var.workers[count.index], "instance_type", var.wrk_instance_type)}"
-  iam_instance_profile = "${local.wrk_instance_profile}"
+  iam_instance_profile = "${aws_iam_instance_profile.node.id}"
   key_name             = "${var.key_pair}"
 
   /* user data supplied to provision each instance */
@@ -249,7 +241,7 @@ resource aws_autoscaling_group "wrk" {
   /* set the name based on role */
   tags  = "${concat(local.tags_asg_format,
                     list(zipmap(local.key_list, list("role", "worker", "true")),
-                         zipmap(local.key_list, list("kubernetes.io/role", "master", "true")),
+                         zipmap(local.key_list, list("kubernetes.io/role", "node", "true")),
                          zipmap(local.key_list, list("Name",
                                                      format("k8s-worker.%s",
                                                             element(split(",",
@@ -263,16 +255,18 @@ resource aws_autoscaling_group "wrk" {
                                                                                                  )) / 2))
                                                                   )), "true")),
                          zipmap(local.key_list, list("labels", jsonencode(
-                                                                 zipmap(
-                                                                   slice(
-                                                                     split(",", lookup(var.workers[count.index], "labels", "")),
-                                                                     0,
-                                                                     length(split(",", lookup(var.workers[count.index], "labels", ""))) / 2
-                                                                   ),
-                                                                   slice(
-                                                                     split(",", lookup(var.workers[count.index], "labels", "")),
-                                                                     length(split(",", lookup(var.workers[count.index], "labels", ""))) / 2,
-                                                                     length(split(",", lookup(var.workers[count.index], "labels", "")))
+                                                                 merge(
+                                                                   zipmap(
+                                                                     slice(
+                                                                       split(",", lookup(var.workers[count.index], "labels", "")),
+                                                                       0,
+                                                                       length(split(",", lookup(var.workers[count.index], "labels", ""))) / 2
+                                                                     ),
+                                                                     slice(
+                                                                       split(",", lookup(var.workers[count.index], "labels", "")),
+                                                                       length(split(",", lookup(var.workers[count.index], "labels", ""))) / 2,
+                                                                       length(split(",", lookup(var.workers[count.index], "labels", "")))
+                                                                     )
                                                                    )
                                                                  )
                                                                ), "true"))
@@ -534,20 +528,27 @@ resource aws_s3_bucket "ark" {
   }
 }
 
+/* create IMA policy and role for nodes */
+/*
+  Policy is based on requirements for kiam
+*/
+data template_file "node-policy" {
+  template = "${file("${path.module}/templates/policies/node.tpl")}"
+}
 
-resource "aws_iam_policy" "kubernetes" {
-  name   = "k8s-${var.name}"
-  path   = "/"
-  policy = "${data.template_file.policy-kubernetes.rendered}"
+resource aws_iam_policy "node" {
+  name_prefix = "k8s-${var.name}-node-"
+
+  path = "/"
+  policy = "${data.template_file.node-policy.rendered}"
 
   lifecycle {
     create_before_destroy = true
   }
 }
 
-
-resource "aws_iam_role" "kubernetes" {
-  name = "k8s-${var.name}"
+resource aws_iam_role "node" {
+  name_prefix = "k8s-${var.name}-node-"
 
   assume_role_policy = <<EOF
 {
@@ -563,18 +564,80 @@ resource "aws_iam_role" "kubernetes" {
   ]
 }
 EOF
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
-resource "aws_iam_instance_profile" "kubernetes" {
-  name = "k8s-${var.name}"
-  role = "${aws_iam_role.kubernetes.name}"
+resource aws_iam_instance_profile "node" {
+  name_prefix = "k8s-${var.name}-node-"
+
+  role = "${aws_iam_role.node.name}"
 }
 
-/*
-  Attach policies to above role
-*/
-resource "aws_iam_role_policy_attachment" "kubernetes" {
-  role       = "${aws_iam_role.kubernetes.name}"
-  policy_arn = "${aws_iam_policy.kubernetes.arn}"
+resource aws_iam_role_policy_attachment "node" {
+  role       = "${aws_iam_role.node.name}"
+  policy_arn = "${aws_iam_policy.node.arn}"
 }
 
+resource aws_iam_role_policy_attachment "node_admin" {
+  role       = "${aws_iam_role.node.name}"
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+}
+
+/* create IAM policy and role for master */
+// load template that defines policies for k8s nodes
+data template_file "policy-kubernetes" {
+  template = "${file("${path.module}/templates/policies/kubernetes.tpl")}"
+  //template = "${file("${format("%s/templates/policies/kubernetes.%s", path.module, replace(replace(var.enable_ark, "/  ^1/", "ark.tpl"), "/^0/", "tpl"))}")}"
+
+  vars {
+    ARK_S3_BUCKET = "${aws_s3_bucket.ark.arn}"
+  }
+}
+
+resource aws_iam_policy "master" {
+  name_prefix = "k8s-${var.name}-master-"
+  path   = "/"
+  policy = "${data.template_file.policy-kubernetes.rendered}"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+
+resource aws_iam_role "master" {
+  name_prefix = "k8s-${var.name}-master-"
+
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": "sts:AssumeRole",
+      "Principal": {
+        "Service": "ec2.amazonaws.com"
+      },
+      "Effect": "Allow"
+    }
+  ]
+}
+EOF
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource aws_iam_instance_profile "master" {
+  name_prefix = "k8s-${var.name}-master-"
+
+  role = "${aws_iam_role.master.name}"
+}
+
+resource aws_iam_role_policy_attachment "master" {
+  role       = "${aws_iam_role.master.name}"
+  policy_arn = "${aws_iam_policy.master.arn}"
+}

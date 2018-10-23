@@ -6,10 +6,6 @@ locals {
   api_instance_ami = "${var.api_instance_ami == "" ? lookup(var.coreos_ami, data.aws_region.current.name) : var.api_instance_ami}"
   wrk_instance_ami = "${var.wrk_instance_ami == "" ? lookup(var.coreos_ami, data.aws_region.current.name) : var.wrk_instance_ami}"
 
-  /* use supplied profile or internally created one */
-  api_instance_profile = "${var.api_instance_profile == "" ? aws_iam_instance_profile.kubernetes.id : var.api_instance_profile}"
-  wrk_instance_profile = "${var.wrk_instance_profile == "" ? aws_iam_instance_profile.kubernetes.id : var.wrk_instance_profile}"
-
   /* if a zone is supplied enable route53 support */
   enable_route53 = "${var.route53_zone == "" ? 0 : 1 }"
 
