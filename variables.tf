@@ -188,57 +188,10 @@ variable workers {
 }
 
 /* security group settings */
-variable api_sg_inbound_rules {
-  type    = "list"
-  default =
-    [
-      {
-        from_port   = "-1"
-        to_port     = "-1"
-        protocol    = "all"
-        cidr_blocks = "0.0.0.0/0"
-      }
-    ]
-}
-
-variable api_sg_outbound_rules {
-  type    = "list"
-  default =
-    [
-      {
-        from_port   = "-1"
-        to_port     = "-1"
-        protocol    = "all"
-        cidr_blocks = "0.0.0.0/0"
-      }
-    ]
-}
-
-variable wrk_sg_inbound_rules {
-  type    = "list"
-  default =
-    [
-      {
-        from_port   = "-1"
-        to_port     = "-1"
-        protocol    = "all"
-        cidr_blocks = "0.0.0.0/0"
-      }
-    ]
-}
-
-variable wrk_sg_outbound_rules {
-  type    = "list"
-  default =
-    [
-      {
-        from_port   = "-1"
-        to_port     = "-1"
-        protocol    = "all"
-        cidr_blocks = "0.0.0.0/0"
-      }
-    ]
-}
+variable "api_lb_security_group_id"          { type = "list" }
+variable "etcd_lb_security_group_id"         { type = "list" }
+variable "api_instance_security_group_id"    { type = "list" }
+variable "worker_instance_security_group_id" { type = "list" }
 
 /* enable Heptio ARK support */
 variable enable_ark { default = false }

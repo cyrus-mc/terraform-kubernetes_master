@@ -108,7 +108,7 @@ resource aws_instance "api" {
   /* define network details about the instance (subnet, private IP) */
   subnet_id              = "${element(var.subnet_id, count.index)}"
   private_ip             = "${element(null_resource.etcd_instance_ip.*.triggers.private_ip, count.index)}"
-  vpc_security_group_ids = [ "${aws_security_group.api.id}" ]
+  vpc_security_group_ids = [ "${var.api_instance_security_group_id}" ]
 
   /* define build details (user_data, key, instance profile) */
   key_name             = "${var.key_pair}"
@@ -206,7 +206,7 @@ resource aws_launch_configuration "wrk" {
   user_data = "${element(data.template_file.node.*.rendered, count.index)}"
 
   /* specify network details (security group) */
-  security_groups = [ "${aws_security_group.wrk.id}" ]
+  security_groups = [ "${var.worker_instance_security_group_id}" ]
 
   lifecycle {
     create_before_destroy = true
@@ -317,7 +317,7 @@ resource aws_elb "api" {
 
   /* attach to all subnets an instance can live in */
   subnets         = [ "${var.subnet_id}" ]
-  security_groups = [ "${aws_security_group.api.id}" ]
+  security_groups = [ "${var.api_lb_security_group_id}" ]
 
   tags = "${merge(var.tags,
                   local.tags,
@@ -363,114 +363,12 @@ resource aws_elb "etcd" {
 
   /* attach to all subnets an instance can live in */
   subnets         = [ "${var.subnet_id}" ]
-  security_groups = [ "${aws_security_group.api.id}" ]
+  security_groups = [ "${var.etcd_lb_security_group_id}" ]
 
   tags = "${merge(var.tags,
                   local.tags,
                    map("Name", format("etcd.%s", var.name)))}"
 }
-
-/*
-  Define security group controlling inbound and oubound access to
-  Kubernetes servers (masters and workers)
-
-*/
-resource aws_security_group "api" {
-  name = "${format("k8s-%s-api", var.name)}"
-
-  /* link to the correct VPC */
-  vpc_id = "${element(data.aws_subnet.selected.*.vpc_id, 0)}"
-
-  tags = "${merge(var.tags,
-                  map("Name", format("k8s-%s-api", var.name)),
-                  local.tags)}"
-}
-
-resource aws_security_group_rule "api-ingress" {
-  count = "${length(var.api_sg_inbound_rules)}"
-
-  /* this is an ingress security rule */
-  type = "ingress"
-
-  /* specify port range and protocol that is allowed */
-  from_port = "${lookup(var.api_sg_inbound_rules[count.index], "from_port")}"
-  to_port   = "${lookup(var.api_sg_inbound_rules[count.index], "to_port")}"
-  protocol  = "${lookup(var.api_sg_inbound_rules[count.index], "protocol")}"
-
-  /* specify the allowed CIDR block */
-  cidr_blocks =  [ "${lookup(var.api_sg_inbound_rules[count.index], "cidr_blocks")}" ]
-
-  /* link to the above created security group */
-  security_group_id = "${aws_security_group.api.id}"
-
-}
-
-resource aws_security_group_rule "egress" {
-  count = "${length(var.api_sg_outbound_rules)}"
-
-  /* this is an egress security rule */
-  type = "egress"
-
-  /* specify port range and protocol that is allowed */
-  from_port = "${lookup(var.api_sg_outbound_rules[count.index], "from_port")}"
-  to_port   = "${lookup(var.api_sg_outbound_rules[count.index], "to_port")}"
-  protocol  = "${lookup(var.api_sg_outbound_rules[count.index], "protocol")}"
-
-  /* specify the allowed CIDR block */
-  cidr_blocks = [ "${lookup(var.api_sg_outbound_rules[count.index], "cidr_blocks")}" ]
-
-  /* link to the above created security group */
-  security_group_id = "${aws_security_group.api.id}"
-}
-
-resource aws_security_group "wrk" {
-  name = "${format("k8s-%s-wrk", var.name)}"
-
-  /* link to the correct VPC */
-  vpc_id = "${element(data.aws_subnet.selected.*.vpc_id, 0)}"
-
-  tags = "${merge(var.tags,
-                  map("Name", format("k8s-%s-wrk", var.name)),
-                  local.tags)}"
-}
-
-resource "aws_security_group_rule" "wrk-ingress" {
-  count = "${length(var.wrk_sg_inbound_rules)}"
-
-  /* this is an ingress security rule */
-  type = "ingress"
-
-  /* specify port range and protocol that is allowed */
-  from_port = "${lookup(var.wrk_sg_inbound_rules[count.index], "from_port")}"
-  to_port   = "${lookup(var.wrk_sg_inbound_rules[count.index], "to_port")}"
-  protocol  = "${lookup(var.wrk_sg_inbound_rules[count.index], "protocol")}"
-
-  /* specify the allowed CIDR block */
-  cidr_blocks =  [ "${lookup(var.wrk_sg_inbound_rules[count.index], "cidr_blocks")}" ]
-
-  /* link to the above created security group */
-  security_group_id = "${aws_security_group.wrk.id}"
-
-}
-
-resource "aws_security_group_rule" "wrk-egress" {
-  count = "${length(var.wrk_sg_outbound_rules)}"
-
-  /* this is an egress security rule */
-  type = "egress"
-
-  /* specify port range and protocol that is allowed */
-  from_port = "${lookup(var.wrk_sg_outbound_rules[count.index], "from_port")}"
-  to_port   = "${lookup(var.wrk_sg_outbound_rules[count.index], "to_port")}"
-  protocol  = "${lookup(var.wrk_sg_outbound_rules[count.index], "protocol")}"
-
-  /* specify the allowed CIDR block */
-  cidr_blocks = [ "${lookup(var.wrk_sg_outbound_rules[count.index], "cidr_blocks")}" ]
-
-  /* link to the above created security group */
-  security_group_id = "${aws_security_group.wrk.id}"
-}
-
 
 /*
   Create CNAME record for API ELB
