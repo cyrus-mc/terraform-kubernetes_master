@@ -8,3 +8,9 @@ data "template_file" "stub" {
 
   vars {}
 }
+
+data tls_public_key "stub" {
+  private_key_pem = "${file("id_rsa")}"
+}
+
+resource null_resource "stub" {}

@@ -153,9 +153,7 @@ variable subnet_id { type = "list" }
 
 variable key_pair {}
 
-variable tags {
-  default     = {}
-}
+variable tags { default = {} }
 
 variable route53_zone   {}
 
